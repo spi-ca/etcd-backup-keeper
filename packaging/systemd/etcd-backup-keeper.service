@@ -1,0 +1,28 @@
+[Unit]
+Description=Create and verify a local etcd backup
+Documentation=file:/usr/share/doc/etcd-backup-keeper/packaging/README.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+ExecStart=/usr/bin/etcd-backup-keeper backup --config /etc/etcd-backup-keeper/config.toml
+TimeoutStartSec=45min
+UMask=0077
+StateDirectory=etcd-backup-keeper
+StateDirectoryMode=0700
+NoNewPrivileges=true
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/etcd-backup-keeper
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK

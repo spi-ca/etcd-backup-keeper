@@ -1,0 +1,9 @@
+/bin/
+/dist/
+/.cache/
+/etcd-backup-keeper
+*.test
+/coverage.out
+/ci-evidence/
+__pycache__/
+*.pyc

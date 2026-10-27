@@ -1,0 +1,120 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Go ${{ matrix.go }}${{ matrix.full && ' / integration + package' || '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - go: '1.26.x'
+            full: false
+          - go: '1.27.x'
+            full: true
+    env:
+      GOTOOLCHAIN: local
+      GOFLAGS: -mod=readonly
+      SOURCE_DATE_EPOCH: '0'
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ matrix.go }}
+          check-latest: true
+          cache-dependency-path: go.sum
+      - name: Formatting, tests and vet
+        timeout-minutes: 10
+        run: |
+          mkdir -p "$RUNNER_TEMP/ci-evidence"
+          go version | tee "$RUNNER_TEMP/ci-evidence/toolchain.log"
+          mapfile -d '' sources < <(git ls-files -z '*.go')
+          test "${#sources[@]}" -gt 0
+          unformatted=$(gofmt -l "${sources[@]}")
+          printf '%s' "$unformatted"
+          test -z "$unformatted"
+          go test -count=1 ./...
+          go vet ./...
+      - name: Race tests
+        if: matrix.full
+        timeout-minutes: 10
+        run: go test -race -count=1 ./...
+      - name: Static Linux amd64 build and license notices
+        if: matrix.full
+        timeout-minutes: 5
+        run: |
+          mkdir -p "$RUNNER_TEMP/ci-bin"
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false \
+            -o "$RUNNER_TEMP/ci-bin/etcd-backup-keeper" ./cmd/etcd-backup-keeper
+          bash scripts/third-party-notices.sh > "$RUNNER_TEMP/THIRD_PARTY_NOTICES.generated"
+          diff -u THIRD_PARTY_NOTICES "$RUNNER_TEMP/THIRD_PARTY_NOTICES.generated"
+          {
+            printf 'source=%s\n' "$(git rev-parse HEAD)"
+            printf 'target=linux/amd64 CGO_ENABLED=0\n'
+            sha256sum "$RUNNER_TEMP/ci-bin/etcd-backup-keeper"
+          } > "$RUNNER_TEMP/ci-evidence/manifest.txt"
+      - name: Prepare isolated test tools and images
+        if: matrix.full
+        timeout-minutes: 10
+        run: bash scripts/ci-bootstrap.sh
+      - name: Full isolated etcd 3.7.3 integration (TLS, auth and restore)
+        if: matrix.full
+        timeout-minutes: 10
+        run: |
+          python3 scripts/integration-test.py \
+            --binary "$RUNNER_TEMP/ci-bin/etcd-backup-keeper" \
+            --evidence-dir "$RUNNER_TEMP/ci-integration"
+      - name: Reproducible deb and offline dpkg lifecycle
+        if: matrix.full
+        timeout-minutes: 5
+        run: |
+          bash scripts/package-test.sh \
+            --binary "$RUNNER_TEMP/ci-bin/etcd-backup-keeper" --binary-kind real \
+            --assets-dir "$GITHUB_WORKSPACE" --evidence-dir "$RUNNER_TEMP/ci-package"
+      # Explicit files only: NEVER upload the evidence trees or secret fixtures.
+      - name: Upload build and tool provenance
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: checks-go-${{ matrix.go }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            ${{ runner.temp }}/ci-evidence/toolchain.log
+            ${{ runner.temp }}/ci-evidence/bootstrap.log
+            ${{ runner.temp }}/ci-evidence/manifest.txt
+      - name: Upload sanitized integration and packaging evidence
+        if: always() && matrix.full
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: integration-and-test-debs
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            ${{ runner.temp }}/ci-integration/integration.log
+            ${{ runner.temp }}/ci-integration/summary.json
+            ${{ runner.temp }}/ci-package/lifecycle.log
+            ${{ runner.temp }}/ci-package/manifest.txt
+            ${{ runner.temp }}/ci-package/initial/*.deb
+            ${{ runner.temp }}/ci-package/upgrade/*.deb

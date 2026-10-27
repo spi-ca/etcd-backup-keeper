@@ -1,0 +1,13 @@
+[Unit]
+Description=Schedule local etcd backups (operator opt-in)
+Documentation=file:/usr/share/doc/etcd-backup-keeper/packaging/README.md
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=15min
+AccuracySec=1min
+Persistent=true
+Unit=etcd-backup-keeper.service
+
+[Install]
+WantedBy=timers.target

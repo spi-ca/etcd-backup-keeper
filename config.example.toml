@@ -1,0 +1,40 @@
+# Host-specific template: review endpoints, TLS/authentication and storage before use.
+# Copy to /etc/etcd-backup-keeper/config.toml and adapt non-secret values.
+# Exact lowercase keys only; unknown fields/tables are rejected.
+
+# Ordered candidates. Each snapshot uses ONE member, not load balancing.
+# No credentials, query strings, fragments or non-root paths in URLs.
+endpoints = ["https://127.0.0.1:2379"]
+# Optional nonzero 64-bit hexadecimal cluster ID, with optional 0x prefix.
+# expected_cluster_id = "0123456789abcdef"
+backup_dir = "/var/lib/etcd-backup-keeper"
+keep = 7
+min_free_bytes = 1073741824
+
+# Positive Go duration strings. Defaults: 5s and 30m respectively.
+# dial_timeout bounds each candidate's initialization/auth + Status probe.
+# etcd 3.7 client creation is nonblocking: DialTimeout alone does not bound a
+# connection; the engine must also use Config.DialContext for its initial probe.
+# request_timeout bounds the WHOLE command after config loading (all attempts
+# and the entire snapshot stream), not idle time. Parent cancellation wins.
+dial_timeout = "5s"
+request_timeout = "30m"
+
+# HTTPS always verifies server chain and hostname, using system roots if no CA
+# file is supplied. ca_file replaces system trust with the specified PEM roots.
+# TLS >= 1.2; no verification bypass. File paths must be absolute.
+# ca_file = "/etc/etcd-backup-keeper/ca.crt"
+# cert_file and key_file must be supplied together for mTLS.
+# cert_file = "/etc/etcd-backup-keeper/client.crt"
+# key_file = "/etc/etcd-backup-keeper/client.key"
+
+# Optional authentication; BOTH fields required and ALL endpoints must be HTTPS.
+# Never put a plaintext password in this TOML or process arguments.
+# username = "backup-operator"
+# password_file = "/etc/etcd-backup-keeper/password"
+# Password and private-key files must be regular, owned by the effective UID,
+# with no group/other permissions (e.g. 0600); final symlinks are rejected.
+# Keep parent directories operator-controlled. Password: one nonempty line;
+# one final LF/CRLF is removed, spaces are preserved (maximum 64 KiB).
+# Credential/certificate files are read only when a remote client is needed;
+# loading config for local status/verify does not read them or access endpoints.
