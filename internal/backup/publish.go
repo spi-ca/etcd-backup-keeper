@@ -81,6 +81,7 @@ func attempt(ctx context.Context, cfg config.Config, index int, pin uint64, root
 	if err = deps.syncFile(snapshotFile); err != nil {
 		return result, localError()
 	}
+	deps.emit(Progress{Stage: ChecksumSnapshot})
 	digest, size, err := Checksum(ctx, snapshotFile)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -96,6 +97,7 @@ func attempt(ctx context.Context, cfg config.Config, index int, pin uint64, root
 	if err != nil {
 		return result, localError()
 	}
+	deps.emit(Progress{Stage: InspectSnapshot})
 	inspection, err := deps.inspect(ctx, readonly)
 	closeErr := readonly.Close()
 	if err != nil {
@@ -127,6 +129,7 @@ func attempt(ctx context.Context, cfg config.Config, index int, pin uint64, root
 	if _, err = ParseMetadata(data); err != nil {
 		return result, localError()
 	}
+	deps.emit(Progress{Stage: PublishSnapshot})
 	if err = writeSynced(dir, "metadata.json", data, deps); err != nil {
 		return result, err
 	}
@@ -145,6 +148,7 @@ func attempt(ctx context.Context, cfg config.Config, index int, pin uint64, root
 	}
 	result = Result{Name: completed, Metadata: m, RetentionPending: true, Removed: []string{}, Pending: []string{}}
 	// Never roll back a completed rename or run retention after root-sync failure.
+	deps.emit(Progress{Stage: SyncRoot})
 	if err = deps.syncRoot(root); err != nil {
 		return result, apperr.New("durability_uncertain", "completed backup preserved but root sync failed; durability is uncertain and retention was not run; run status")
 	}
@@ -155,6 +159,7 @@ func attempt(ctx context.Context, cfg config.Config, index int, pin uint64, root
 		}
 		return result, apperr.New(code, "operation ended after publication; completed backup preserved and retention was not run; run status")
 	}
+	deps.emit(Progress{Stage: Retention})
 	if err := retain(ctx, root, cfg.Keep, &result, deps); err != nil {
 		return result, err
 	}

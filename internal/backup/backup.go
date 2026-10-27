@@ -23,17 +23,20 @@ type Result struct {
 }
 
 type dependencies struct {
-	connect    func(context.Context, context.Context, config.Config, int) (connection, error)
-	inspect    func(context.Context, *os.File) (Inspection, error)
-	write      func(*os.File, []byte) (int, error)
-	syncFile   func(*os.File) error
-	syncDir    func(*storage.Dir) error
-	publish    func(*storage.Root, string, string) error
-	syncRoot   func(*storage.Root) error
-	quarantine func(*storage.Root, string) (string, error)
-	unlink     func(*storage.Dir, string) error
-	removeDir  func(*storage.Root, string) error
-	now        func() time.Time
+	observe     func(Progress)
+	progressNow func() time.Time
+	progress    *progressReporter
+	connect     func(context.Context, context.Context, config.Config, int) (connection, error)
+	inspect     func(context.Context, *os.File) (Inspection, error)
+	write       func(*os.File, []byte) (int, error)
+	syncFile    func(*os.File) error
+	syncDir     func(*storage.Dir) error
+	publish     func(*storage.Root, string, string) error
+	syncRoot    func(*storage.Root) error
+	quarantine  func(*storage.Root, string) (string, error)
+	unlink      func(*storage.Dir, string) error
+	removeDir   func(*storage.Root, string) error
+	now         func() time.Time
 }
 
 func defaults() dependencies {
@@ -58,8 +61,24 @@ func Run(ctx context.Context, cfg config.Config, toolVersion string) (Result, er
 	return run(ctx, cfg, toolVersion, defaults())
 }
 
+// RunWithProgress is Run with an optional synchronous observer. Observers must
+// return promptly and must not panic. They cannot return an error or change the
+// publication/retention protocol; output failures belong at the caller boundary.
+func RunWithProgress(ctx context.Context, cfg config.Config, toolVersion string, observe func(Progress)) (Result, error) {
+	deps := defaults()
+	deps.observe = observe
+	return run(ctx, cfg, toolVersion, deps)
+}
+
 func run(parent context.Context, cfg config.Config, toolVersion string, deps dependencies) (Result, error) {
 	var result Result
+	if deps.observe != nil {
+		now := deps.progressNow
+		if now == nil {
+			now = time.Now
+		}
+		deps.progress = &progressReporter{observe: deps.observe, now: now, started: now()}
+	}
 	if err := cfg.Validate(); err != nil {
 		return result, err
 	}
@@ -81,12 +100,14 @@ func run(parent context.Context, cfg config.Config, toolVersion string, deps dep
 	// candidate has unknown identity on a first run; it cannot certify the pin.
 	var candidates []int
 	for i := range cfg.Endpoints {
+		deps.emit(Progress{Stage: ProbeCandidate, Candidate: i + 1, Total: len(cfg.Endpoints)})
 		p, err := probeCandidate(ctx, cfg, i, deps)
 		if ctx.Err() != nil {
 			return result, ctx.Err()
 		}
 		if err != nil {
 			if isRemote(err) {
+				deps.emit(Progress{Stage: CandidateUnavailable, Candidate: i + 1, Total: len(cfg.Endpoints)})
 				continue
 			}
 			return result, err
@@ -97,8 +118,17 @@ func run(parent context.Context, cfg config.Config, toolVersion string, deps dep
 		pin = p.clusterID
 		candidates = append(candidates, i)
 	}
-	for _, index := range candidates {
+	for position, index := range candidates {
+		if position > 0 {
+			deps.emit(Progress{Stage: Failover, Candidate: index + 1, Total: len(cfg.Endpoints)})
+		}
+		deps.emit(Progress{Stage: AttemptSnapshot, Candidate: index + 1, Total: len(cfg.Endpoints)})
 		result, err = attempt(ctx, cfg, index, pin, root, toolVersion, deps)
+		if err != nil {
+			deps.emit(Progress{Stage: AttemptFailed, Candidate: index + 1, Total: len(cfg.Endpoints)})
+		} else {
+			deps.emit(Progress{Stage: Complete})
+		}
 		if ctx.Err() != nil && isRemote(err) {
 			return Result{}, incompleteContext(ctx)
 		}

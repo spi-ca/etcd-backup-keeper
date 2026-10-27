@@ -6,26 +6,42 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"time"
 
+	"etcd-backup-keeper/internal/apperr"
 	"etcd-backup-keeper/internal/backup"
+	"etcd-backup-keeper/internal/check"
 	"etcd-backup-keeper/internal/config"
 )
 
 // Run returns a process exit code. Signals are converted into context
 // cancellation by main, not hidden in command implementations.
 func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version string) int {
+	return run(ctx, args, stdout, stderr, version, backup.RunWithProgress)
+}
+
+type backupRunner func(context.Context, config.Config, string, func(backup.Progress)) (backup.Result, error)
+
+func run(ctx context.Context, args []string, stdout, stderr io.Writer, version string, runBackup backupRunner) int {
+	return runWithCheck(ctx, args, stdout, stderr, version, runBackup, check.Run)
+}
+
+type checkRunner func(context.Context, config.Config, bool) (check.Result, error)
+
+func runWithCheck(ctx context.Context, args []string, stdout, stderr io.Writer, version string, runBackup backupRunner, runCheck checkRunner) int {
 	opts, err := parse(args)
 	if err != nil {
 		opts.json = requestedJSON(args)
 		return failure(opts, err, stdout, stderr)
 	}
 	if opts.help {
+		help := commandUsage(opts.command)
 		if opts.json {
 			err = json.NewEncoder(stdout).Encode(envelope{Command: opts.command, OK: true, Data: struct {
 				Usage string `json:"usage"`
-			}{usage}})
+			}{help}})
 		} else {
-			_, err = io.WriteString(stdout, usage)
+			_, err = io.WriteString(stdout, help)
 		}
 		if err != nil {
 			return 1
@@ -57,30 +73,57 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 	if err := requestCtx.Err(); err != nil {
 		return failure(opts, err, stdout, stderr)
 	}
-	if opts.verbose {
-		if _, err := fmt.Fprintln(stderr, "stage=config_validated"); err != nil {
+	if opts.command == "check" {
+		result, checkErr := runCheck(requestCtx, cfg, opts.connect)
+		if checkErr != nil {
+			if !opts.json {
+				if err := writeHumanCheck(stdout, result); err != nil {
+					return failureExitCode(checkErr)
+				}
+			}
+			return failureData(opts, checkErr, result, stdout, stderr)
+		}
+		if opts.json {
+			err = json.NewEncoder(stdout).Encode(envelope{Command: opts.command, OK: true, Data: result})
+		} else {
+			err = writeHumanCheck(stdout, result)
+		}
+		if err != nil {
 			return 1
 		}
+		return 0
+	}
+	progress := progressOutput{writer: stderr}
+	var observe func(backup.Progress)
+	if opts.verbose {
+		progress.write("stage=config_validated\n")
+		observe = progress.observe
 	}
 	if opts.command == "backup" {
-		result, err := backup.Run(requestCtx, cfg, version)
+		result, err := runBackup(requestCtx, cfg, version, observe)
 		if err != nil {
+			var data any
 			if result.Name != "" {
+				data = result
 				if !opts.json {
-					if _, writeErr := fmt.Fprintf(stderr, "Published backup %s; retention pending. Run status before retrying a backup.\n", result.Name); writeErr != nil {
+					if _, writeErr := fmt.Fprintf(stderr, "Published backup %s; %s\n", result.Name, publishedFailureSummary(apperr.Safe(err).Code)); writeErr != nil && progress.err == nil {
 						return 1
 					}
 				}
-				return failureData(opts, err, result, stdout, stderr)
 			}
-			return failure(opts, err, stdout, stderr)
+			code := failureData(opts, err, data, stdout, stderr)
+			if progress.err != nil {
+				// A progress sink failure must not hide the engine's error code.
+				return failureExitCode(err)
+			}
+			return code
 		}
 		if opts.json {
 			err = json.NewEncoder(stdout).Encode(envelope{Command: "backup", OK: true, Data: result})
 		} else {
 			_, err = fmt.Fprintf(stdout, "Backup %s completed (revision %d, %d bytes); retention complete, %d removed.\n", result.Name, result.Metadata.Revision, result.Metadata.Bytes, len(result.Removed))
 		}
-		if err != nil {
+		if err != nil || progress.err != nil {
 			return 1
 		}
 		return 0
@@ -93,25 +136,8 @@ func Run(ctx context.Context, args []string, stdout, stderr io.Writer, version s
 		}
 		if opts.json {
 			err = json.NewEncoder(stdout).Encode(envelope{Command: opts.command, OK: true, Data: result})
-		} else if !result.Initialized {
-			_, err = fmt.Fprintln(stdout, "Backup storage is uninitialized; no completed local backups.")
 		} else {
-			_, err = fmt.Fprintf(stdout, "Local backups: %d completed, %d inprogress, %d deleting; %d bytes.\n", len(result.Completed), len(result.InProgress), len(result.Deleting), result.TotalBytes)
-			if err == nil && result.LatestSuccess != nil {
-				_, err = fmt.Fprintf(stdout, "Latest success: %s (revision %d).\n", result.LatestSuccess.Name, result.LatestSuccess.Metadata.Revision)
-			}
-			for _, entry := range result.Completed {
-				if err != nil {
-					break
-				}
-				_, err = fmt.Fprintf(stdout, "%s revision=%d bytes=%d completed=%s\n", entry.Name, entry.Metadata.Revision, entry.Metadata.Bytes, entry.Metadata.CompletedAt.Format("2006-01-02T15:04:05.999999999Z07:00"))
-			}
-			for _, name := range append(result.InProgress, result.Deleting...) {
-				if err != nil {
-					break
-				}
-				_, err = fmt.Fprintln(stdout, name)
-			}
+			err = writeHumanStatus(stdout, result, time.Now())
 		}
 	} else {
 		result, verifyErr := backup.Verify(requestCtx, cfg, opts.backup)

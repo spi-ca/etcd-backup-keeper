@@ -104,9 +104,18 @@ etcd-backup-keeper verify --config /etc/etcd-backup-keeper/config.toml --json
 etcd-backup-keeper verify --config /etc/etcd-backup-keeper/config.toml --backup NAME
 ```
 
-- `status`는 완료·미완료·삭제 대기 목록, 저장된 메타데이터·크기와 마지막 완료
-  시각 기준의 성공 백업을 표시합니다. **전체 스냅샷을 해싱하지 않으므로 status
-  성공만으로 손상이 없다고 판단하지 마세요.** 영속적인 실행 이력 조회도 아닙니다.
+- 사람용 `status`는 `completed`·`inprogress`·`deleting` 개수와 완료 목록을
+  표시합니다. `Completed snapshot bytes`는 **완료 스냅샷 파일 크기의 합계**이며
+  IEC 단위(`KiB`, `MiB` 등)와 정확한 바이트 수를 함께 표시합니다. 메타데이터·
+  미완료·삭제 대기 파일을 포함한 전체 볼륨 사용량이나 여유 공간이 아닙니다.
+- `Latest completed`는 저장된 완료 시각 기준의 백업 이름·UTC 시각·경과 시간입니다.
+  미래 시각이면 음수나 `0s ago` 대신 `future timestamp; check clock skew`로
+  표시합니다. 최근 실행 시도·마지막 verify 결과·백업 노후화의 건강 판정은 아닙니다.
+  완료 항목별로 이름·revision·스냅샷 크기·UTC 완료 시각도 표시합니다.
+- 미완료·삭제 대기가 있으면 `ATTENTION`과 상태별 이름을 표시합니다. 항목을
+  임의로 삭제하거나 완료로 간주하지 말고 아래 실패 대응 절차를 따르세요.
+  **전체 스냅샷을 해싱하지 않으므로 status 성공만으로 손상이 없다고 판단하지 마세요.**
+  빈 저장소에서도 `Integrity not checked by status; run verify.`를 표시합니다.
 - `verify`의 기본 대상은 최신 하나가 아닌 **모든 완료 백업**입니다. `--backup`에는
   경로가 아닌 완료 백업 이름 하나를 지정합니다. 미완료·삭제 대기는 검증 대상이
   아니며, 완료 백업 부재나 지정 백업 부재는 실패입니다.
@@ -118,12 +127,71 @@ etcd-backup-keeper verify --config /etc/etcd-backup-keeper/config.toml --backup 
   충돌 시 `storage_locked`로 실패하므로 스케줄 간격과 검증 시간을 고려하세요.
   실행 중인 작업이 없다는 확인 없이 `.lock`을 지우거나 교체하지 마세요.
 
+### 선택적 읽기 전용 점검: check
+
+```sh
+etcd-backup-keeper check --config /etc/etcd-backup-keeper/config.toml
+# 원격 접속을 의도한 경우에만 명시적으로 선택:
+etcd-backup-keeper check --config /etc/etcd-backup-keeper/config.toml --connect --json
+```
+
+`check`는 기본 **완전 오프라인**입니다. 일반 명령과 같은 strict 설정 검증 후,
+`status`/`verify`와 달리 명시한 TLS·비밀번호 자료를 기존 크기·파일 안전성 제한으로
+읽어 client 설정만 구성합니다. client 생성·DNS 조회·접속은 하지 않으며 시스템 CA
+등록이나 인증 자료 생성도 하지 않습니다. HTTPS의 실제 서버 신뢰·인증 성공은 별개입니다.
+
+저장소는 경로별 no-symlink 디렉터리 descriptor와 권한만 읽습니다. 기존 루트는 실행 UID
+소유의 정확한 `0700`이어야 하며 `.lock` 없는 private 빈 루트도 허용합니다. 상위 경로는
+root 또는 실행 UID 소유이고 group/world 쓰기가 없어야 합니다(root 소유 sticky 경로는
+예외). 상위 경로가 준비된 마지막 루트 부재는 `unverified`이며 생성하지 않습니다.
+상위 경로 부재·접근 불가·안전하지 않은 소유권/권한·symlink는 실패입니다. 디렉터리
+내용을 열거하거나 임의 트리를 걷지 않고, `.lock` 생성/교체/획득, 쓰기·sync·chmod·자동
+수정도 하지 않습니다. **제한된 경로/권한 검사이지 전체 백업 preflight나 쓰기 보증이 아닙니다.**
+
+`--connect`만 원격 client 생성·인증과 **각 후보의 Status**를 허용합니다. 전체는
+`request_timeout`, 후보별 생성 중 동기 인증과 Status는 남은 `dial_timeout`으로 제한합니다.
+유효한 header·0이 아닌 cluster/member ID·etcd 3.7 버전, `expected_cluster_id` 및 관측한
+도달 가능 후보 사이의 cluster 일치를 검사합니다. 후보 하나라도 접속/Status 실패하면
+전체가 실패하며 다른 후보 성공으로 숨기지 않습니다. 스냅샷은 요청하지 않으므로 Status
+성공도 스냅샷 권한을 확인한 것은 아닙니다. 이전 완료 백업의 cluster pin은 읽지 않습니다.
+
+각 행은 `confirmed`(명시된 제한 안에서 확인), `unverified`(미확인), `failed`(관측된 실패)입니다.
+JSON은 기존 envelope의 새 `check` data에 `connect`·`rows`를 담고 실패 때도 가능한 행을
+보존합니다. 주소·설정 경로·비밀번호·원본 오류 대신 정적 문구와 후보 번호만 표시합니다.
+종료 `0`은 **관측된 실패 없음**일 뿐 전체 준비 완료가 아닙니다. 쓰기 가능성·잠금·fsync·
+덮어쓰기 없는 확정·내구성·스냅샷 권한·기존 백업 pin·스냅샷 무결성·복원 가능성은 항상
+미확인으로 남습니다. 이후 승인된 격리 환경의 실제 백업·verify·복원 훈련을 대체하지 않습니다.
+
+### 명령별 도움말
+
+`etcd-backup-keeper --help`는 전체 명령 목록을, `COMMAND --help` 또는
+`COMMAND -h`는 해당 명령의 정확한 옵션·기본값·짧은 예시·출력/종료 의미를
+표시합니다. 예를 들어 `verify --help`는 기본 대상이 **모든 완료 백업**임을
+명시합니다. `--config`·`--json`은 명령 앞뒤에서 사용할 수 있으며 `--verbose`는
+`backup`, `--backup NAME`은 `verify`, `--connect`는 `check`에서만 지원합니다.
+
+도움말과 `version`은 설정을 로드하거나 etcd에 접속하지 않습니다. `version`도
+공통 `--config PATH`를 받지만 해당 파일을 읽지 않습니다. `COMMAND --help --json`은
+기존 JSON envelope의 `data.usage` 문자열로 해당 명령의 도움말을 제공합니다.
+잘못된 옵션은 도움말과 함께 지정해도 사용법 오류이며 입력 값을 진단에 노출하지 않습니다.
+
 ### 출력과 종료 코드
 
+사람용 status의 단위·경과 시간·주의 표시는 JSON 필드나 값에 추가되지 않습니다.
 `--json`은 stdout에 단일 object를 출력합니다. `command`, `ok`, 성공 시 `data`,
 실패 시 `error.code`·`error.message`를 사용합니다. 확정 후 실패는 `ok: false`여도
 `data`에 새 백업 정보와 정리 대기 상태가 있을 수 있습니다. 종료 코드와 `ok`를 함께
-확인하세요. `--verbose`의 단계 진단은 stderr이므로 stdout과 섞지 않습니다.
+확인하세요. `backup --verbose`는 stderr에 후보 번호/전체 수(주소 제외), 실제 시도·전환,
+수신 누적 바이트, 체크섬·검사, 확정, 루트 동기화, 보존 정리 단계를 표시합니다.
+체크섬·검사·확정·동기화·정리 표시는 해당 작업의 시작을 뜻하며,
+`stage=complete`는 확정·동기화·정리가 모두 성공한
+경우에만 나옵니다. 수신량은 시도마다 초기화하고 약 1초 간격으로 갱신하며,
+작거나 실패한 스트림도 마지막 수신량(`final=true`)을 표시합니다. 이 표시는
+수신 종료 시점의 바이트 수이지 검증·확정 성공을 뜻하지 않습니다. 경과 시간은
+전체 작업 기준이며 예상 완료 시간·진행률은 제공하지 않습니다. 주소·인증 정보·원본
+오류는 진단에 포함하지 않으며 JSON stdout 형식은 바뀌지 않습니다.
+진단 출력 실패로 확정·정리를 중단하지 않습니다. 작업이 성공해도 출력 실패 시
+종료 코드는 `1`일 수 있으며, 작업 자체도 실패하면 작업 오류 코드가 우선합니다.
 
 | 종료 코드 | 의미 |
 |---|---|
@@ -133,8 +201,18 @@ etcd-backup-keeper verify --config /etc/etcd-backup-keeper/config.toml --backup 
 | `124` | 작업 timeout |
 | `130` | SIGINT/SIGTERM 등으로 취소 |
 
-오류 메시지는 비밀이나 DB key/value가 노출되지 않도록 일반화됩니다. 자동화는
-문자열 전체보다 종료 코드와 JSON 오류 코드를 기준으로 처리하세요.
+오류 메시지는 비밀이나 DB key/value가 노출되지 않도록 일반화됩니다. 사람이 읽는
+stderr에는 알려진 오류 코드별 정적 `hint:`가 추가됩니다. 설정·인증·잠금·공간·검증·
+원격 연결·취소/timeout 등에 대한 점검 안내이며 원본 오류나 설정 값은 포함하지 않습니다.
+JSON의 `data`·`error.code`·`error.message` 및 기존 종료 코드 계약은 그대로 유지합니다.
+자동화는 문자열 전체보다 종료 코드와 JSON 오류 코드를 기준으로 처리하세요.
+
+확정 후 실패의 첫 안내는 `durability_uncertain`이면 백업 이름은 존재하지만 루트 내구성이
+불확실하고 보관 정리를 실행하지 않았음을, `retention_incomplete`이면 백업 확정 후 정리가
+끝나지 않았음을 구분합니다. 확정 후 취소/timeout은 중단 단계를 추정하지 않고 작업 미완료와
+`status` 점검만 안내합니다. `status` 성공은 내구성·무결성·복원 성공의 보증이 아닙니다.
+원인과 남은 상태를 확인하기 전에 무조건 재실행하거나 `.lock`·미완료·삭제 대기 항목을
+임의로 지우지 마세요.
 
 ## 4. 확정·보관 정리와 실패 대응
 

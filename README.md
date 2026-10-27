@@ -1,26 +1,28 @@
 # etcd-backup-keeper
 
-etcd의 온라인 스냅샷을 로컬에 생성하고 무결성을 검사하며 보관 개수를 관리하는
-Linux용 Go CLI입니다. 자체 데몬 대신 외부 스케줄러로 실행합니다.
+etcd의 온라인 전체 스냅샷을 로컬에 저장하고, 무결성을 검사하며 보관 개수를
+관리하는 Linux용 Go CLI입니다. 자체 데몬 없이 수동 실행하거나 외부 스케줄러로
+실행합니다. 런타임에 외부 `etcdctl`/`etcdutl`은 필요하지 않습니다.
 
 저장소: <https://github.com/spi-ca/etcd-backup-keeper>
 
-## 지원 범위와 한계
+## 지원 범위
 
 - etcd **3.7** 계열을 지원하며 개발·격리 검증 기준은 **3.7.3**입니다.
 - Linux와 `/proc`, 동일 실행 파일을 다시 실행하는 로컬 검사 helper가 필요합니다.
-  런타임에 외부 `etcdctl`/`etcdutl`은 필요하지 않습니다.
-- 최소 Go **1.26**, 개발·확장 검증 계열은 **1.27**입니다.
-- 패키지 검증 기준은 **Ubuntu 24.04 amd64**입니다. 실제 배포 OS/CPU와 운영
-  볼륨·systemd 환경의 적합성은 별도로 확인해야 합니다.
-- 운영 중인 한 멤버에서 전체 스냅샷을 받습니다. 서비스 중지·재시작, 자동
-  defrag/compaction, 클러스터 구성 변경은 하지 않지만 디스크·네트워크 부하는 발생합니다.
-- 자동 복원, 원격 업로드, 증분 백업, Kubernetes 컨트롤러, 자체 스케줄러는 범위 밖입니다.
+- 소스 빌드에는 최소 Go **1.26**이 필요합니다.
+- 패키지 검증 기준은 **Ubuntu 24.04 amd64**입니다. 실제 배포 OS/CPU, 운영
+  볼륨의 내구성, systemd 환경은 배포 대상에서 별도로 확인해야 합니다.
+- 한 멤버에서 스냅샷을 받으며 디스크·네트워크 부하가 발생합니다. 서비스 중지·
+  재시작, defrag/compaction, 클러스터 구성 변경은 하지 않습니다.
+- 자동 복원, 원격 업로드, 증분 백업, 자체 스케줄러는 제공하지 않습니다.
 
-## 빌드와 첫 실행
+## 안전한 첫 실행
 
-Linux 개발 환경에서 프로젝트 루트를 기준으로 실행합니다. 의존성 준비에는
-네트워크가 필요할 수 있습니다. 아래는 버전 주입 없는 기본 빌드입니다.
+### 1. 소스 빌드와 도움말 확인
+
+Linux에서 프로젝트 루트를 기준으로 실행합니다. 의존성 준비에는 네트워크가
+필요할 수 있습니다. 아래 기본 빌드에는 릴리스 버전을 주입하지 않습니다.
 
 ```sh
 mkdir -p bin
@@ -29,100 +31,76 @@ bin/etcd-backup-keeper version
 bin/etcd-backup-keeper --help
 ```
 
-[설정 예시](config.example.toml)를 private 설정 파일로 복사한 뒤 endpoint,
-인증서 경로, 백업 디렉터리를 수정합니다. 평문 비밀번호는 설정이나 인자에 넣지
-않습니다. 권한·TLS·저장 공간 준비는 [운영 안내](docs/operations.md)를 따릅니다.
-기본 설정 경로는 `/etc/etcd-backup-keeper/config.toml`입니다.
+### 2. 첫 백업 전에 설정·인증·저장소 준비
+
+[설정 예시](config.example.toml)를 private 설정 파일로 **복사하고 검토·수정한 뒤**
+실행하세요. 기본 경로는 `/etc/etcd-backup-keeper/config.toml`입니다.
+
+- endpoint가 의도한 클러스터인지 확인하고 TLS 인증서·키와 필요한 인증을 준비합니다.
+  평문 비밀번호를 설정이나 인자에 넣지 말고 `password_file`로 별도 배치합니다.
+- 백업 경로, 보관 개수, 여유 공간과 실행 UID를 확인합니다. 백업 디렉터리는
+  `0700`, 파일은 `0600`이며 실행 UID가 소유해야 합니다.
+- 구체적인 준비·권한·TLS 절차는 [운영 안내](docs/operations.md)를 따릅니다.
+  스냅샷에는 비밀 정보가 포함될 수 있으므로 저장소 접근을 제한하세요.
+
+선택적으로 `bin/etcd-backup-keeper check --config /etc/etcd-backup-keeper/config.toml`로
+설정·명시한 인증 자료·저장 경로를 **읽기 전용·오프라인** 점검할 수 있습니다.
+`--connect`를 명시해야 후보별 Status에 접속하며 스냅샷은 요청하지 않습니다.
+`unverified`는 미확인 항목이고 종료 `0`도 쓰기·내구성·백업/복원 성공 보증이 아닙니다.
+
+### 3. 승인된 격리 etcd에서 백업·검증
+
+다음은 위 설정 준비가 끝난 뒤 실행하는 예시입니다. 운영 클러스터에서 바로
+시작하지 말고, 먼저 격리 환경에서 백업과 [복원 훈련](docs/restore-drill.md)을 확인하세요.
 
 ```sh
-etcd-backup-keeper backup --config /etc/etcd-backup-keeper/config.toml
-etcd-backup-keeper status --config /etc/etcd-backup-keeper/config.toml
-etcd-backup-keeper verify --config /etc/etcd-backup-keeper/config.toml
+bin/etcd-backup-keeper backup --config /etc/etcd-backup-keeper/config.toml
+bin/etcd-backup-keeper status --config /etc/etcd-backup-keeper/config.toml
+bin/etcd-backup-keeper verify --config /etc/etcd-backup-keeper/config.toml
 ```
-
-소스 빌드만 한 경우 `etcd-backup-keeper` 대신 `bin/etcd-backup-keeper`를 사용합니다.
-처음에는 승인된 격리 etcd에서 백업·검증·[복원 훈련](docs/restore-drill.md)을 수행하고,
-그 결과와 실제 운영 조건을 확인한 뒤 스케줄러를 활성화합니다.
 
 ## 명령
 
-```text
-etcd-backup-keeper backup [--config PATH] [--json] [--verbose]
-etcd-backup-keeper status [--config PATH] [--json]
-etcd-backup-keeper verify [--config PATH] [--json] [--backup NAME]
-etcd-backup-keeper version [--json]
-```
-
-| 명령 | 의미 |
+| 명령 | 용도와 주요 옵션 |
 |---|---|
-| `backup` | 후보 신원·공간 점검, 스냅샷 검사·확정 후에만 보관 정리 |
-| `status` | 오프라인 목록·메타데이터·크기 조회. 스냅샷 전체 해싱 없음 |
-| `verify` | 기본은 **모든 완료 백업** 검사. `--backup NAME`은 정확한 완료 디렉터리 이름 하나 |
+| `backup` | 스냅샷 검사·확정 후에만 보관 정리. `--verbose`로 stderr 진단 출력 |
+| `status` | 오프라인 목록·메타데이터·크기 조회. 스냅샷 전체 해싱은 하지 않음 |
+| `verify` | 기본은 **모든 완료 백업** 검사. `--backup NAME`으로 정확한 완료 디렉터리 이름 하나 선택 |
+| `check` | 설정·인증 자료·저장 경로의 제한적 읽기 전용 점검. 기본 오프라인, `--connect`는 후보별 Status만 요청 |
 | `version` | 설정 로드나 etcd 접속 없이 버전 출력 |
 
-`status`/`verify`는 etcd에 접속하지 않고 인증서·개인키·비밀번호 파일도 읽지
-않습니다. 유효한 설정은 필요합니다. 완료 백업이 없으면 `verify`는 실패합니다.
-`--json`은 자동화용이며, `backup --verbose`의 단계 진단은 stderr로 출력합니다.
+`COMMAND --help`로 명령별 옵션·기본값·예시를 확인합니다(예: `verify --help`).
+`--config PATH`로 설정을 지정하고 `--json`으로 자동화용 출력을 받습니다.
+`status`/`verify`도 유효한 설정은 필요하지만 etcd에 접속하거나 인증서·개인키·
+비밀번호 파일을 읽지 않습니다. 완료 백업이 없으면 `verify`는 실패합니다.
 
-## 저장과 검증의 의미
+## 결과를 해석할 때
 
-```text
-backup_dir/
-  .lock
-  inprogress-<UTC>-<random>/  # 미완료: 자동 삭제하지 않음
-  backup-<UTC>-<random>/     # 완료
-    snapshot.db
-    metadata.json
-    SHA256SUMS
-  deleting-<UTC>-<random>/   # 중단된 보관 정리: 일부 파일만 남을 수 있음
-```
+- **무결성 검사 성공은 복원 성공을 보장하지 않습니다.** 출처의 진위나 애플리케이션
+  정합성도 보증하지 않으므로 신뢰할 수 있는 TLS·endpoint와 별도 복원 훈련이 필요합니다.
+- `backup` 성공은 새 백업 확정과 보관 정리 완료를 뜻합니다. 단, 확정 후 sync·정리
+  실패나 취소는 **새 백업이 있어도 비정상 종료**할 수 있습니다. 즉시 재실행하지 말고
+  `status`와 [실패 대응 절차](docs/operations.md)를 먼저 확인하세요.
+- 잠금 충돌이나 미완료 항목은 강제 삭제로 해결하지 마세요. 저장 구조·잠금·확정
+  절차와 수동 점검 방법도 운영 안내가 기준입니다.
 
-- 디렉터리 `0700`, 파일 `0600`, 실행 UID 소유를 요구합니다. 저장 경로의 symlink를
-  따르지 않으며 상위 디렉터리는 운영자가 통제해야 합니다.
-- `backup`은 배타 잠금, 로컬 조회·검증은 공유 잠금을 사용합니다. 충돌하면 기다리지
-  않고 실패합니다. `.lock`을 지워 잠금을 우회하지 마세요.
-- 파일 → staging 디렉터리 sync → 덮어쓰기 없는 원자적 rename → 백업 루트 sync
-  이후에만 오래된 완료 백업을 정리합니다. 새 백업은 시계 역행 시에도 보존합니다.
-- 확정 전 실패는 이전 완료 백업과 미완료 staging을 보존합니다. 확정 후 sync나
-  정리 실패는 **백업이 존재해도 비정상 종료**할 수 있습니다. 먼저 `status`를 확인합니다.
-- 검증은 내장 체크섬, 자체 SHA-256, manifest·메타데이터 및 공식 bbolt 구조 검사를
-  포함합니다. 신뢰된 출처·암호학적 클러스터 신원·복원 성공을 보장하지 않습니다.
+## 다음 문서
 
-etcd 3.7.3의 Snapshot 응답은 `Header`를 채우지 않습니다. 후보 및 선택 멤버의
-스냅샷 전·후 Status를 확인하고 응답 Header가 제공되면 추가로 검사하지만,
-스트림 자체의 신원을 증명하지는 않습니다. TLS와 endpoint를 신뢰해야 합니다.
-첫 실행에 도달 불가한 후보의 신원은 알 수 없습니다.
+패키지의 systemd timer는 **운영자가 명시적으로 활성화**합니다. 설치·업그레이드는
+unit을 자동 활성화·시작하거나 백업을 실행하지 않습니다. 수동 백업·검증·복원 훈련과
+실제 배포 조건을 확인한 뒤 스케줄러를 준비하세요.
 
-## 배포와 문서
+- [운영 안내](docs/operations.md): 설정·인증, 저장소, 출력·종료 코드, 실패 대응, 스케줄러
+- [격리 복원 훈련](docs/restore-drill.md): 새 데이터 디렉터리·포트에서 수동 복원 확인
+- [Ubuntu 패키징](packaging/README.md): 명시적 빌드 입력, 설치·업그레이드·제거
+- [통합 테스트](integration/README.md): 격리 etcd의 TLS·인증·복원·실패 시나리오
+- [요구사항과 검증 매핑](docs/requirements.md): 설계 근거, 로컬 검증 기록과 한계
+- [CI 범위](.github/README.md) · [Actions](https://github.com/spi-ca/etcd-backup-keeper/actions): 검사 범위와 hosted 실행 결과
 
-`.deb` 빌더는 **명시적으로 제공한 정적 Linux amd64 바이너리·버전·고정 문서
-입력·maintainer**를 사용합니다. Go 빌드나 apt 설치를 자동 수행하지 않습니다.
-설치·업그레이드는 백업을 실행하거나 unit을 자동 활성화하지 않습니다.
-
-- [운영 안내](docs/operations.md): 설정, TLS/인증, 권한, 스케줄러, 실패·취소 대응
-- [격리 복원 훈련](docs/restore-drill.md): 새 데이터 디렉터리·포트에서 수동 확인
-- [Ubuntu 패키징](packaging/README.md): 명시적 빌드 입력과 설치·업그레이드·제거
-- [통합 테스트](integration/README.md): 격리 etcd, TLS/인증, 복원과 실패 시나리오
-- [CI 범위](.github/README.md): Go 버전별 검사와 증거 수집의 한계
-- [개발 기준과 요구사항 추적](docs/requirements.md): 완료 증거와 설계 근거
-
-## 개발 검증 상태
-
-로컬 단위 테스트·race·vet·정적 빌드와, 실제 CLI의 백업 → 공식 도구 복원 → 값
-읽기 스모크가 확인되었습니다. `status`/`verify`/retention도 구현되었습니다.
-최종 바이너리의 격리 제품 통합 18개 시나리오(TLS/mTLS·비밀번호 인증·복원·
-후보 전환·클러스터 불일치·보관 정리·변조·실패 보존·SIGTERM 취소·오프라인 조회)가
-모두 통과했고 정리 완료도 확인되었습니다. 최종 실제 바이너리와 운영·복원 문서를
-포함한 격리 dpkg 수명주기·설정/백업 보존·재현 빌드·정적 unit 검사도 통과했습니다.
-Hosted CI 상태와 실행별 증거는 [Actions](https://github.com/spi-ca/etcd-backup-keeper/actions)에서
-확인하세요. 로컬 검증만으로 hosted 실행 성공을 추정하지 않습니다.
-
-rootless 환경의 live systemd 시험은 namespace 설정 권한 제한으로 실패했습니다.
-정적 unit 검사나 offline 패키지 시험을 실제 서비스·timer 실행 증거로 보지 않습니다.
-운영 배포 승인이나 복원 보증을 의미하지 않습니다.
+로컬 검증 기록이나 CI 성공은 운영 배포 승인·복원 보증이 아닙니다. 특히 offline
+패키지·정적 unit 검사는 실제 service/timer 실행 검증을 대신하지 않습니다.
 
 ## 라이선스
 
-BSD-3-Clause, Copyright © 2026 Sangbum Kim. 전문은 [LICENSE](LICENSE)에 있습니다.
-실제 제품 의존성과 Go 표준 라이브러리의 고지는 `scripts/third-party-notices.sh`로
-생성하는 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES)에 기록합니다.
+BSD-3-Clause, Copyright © 2026 Sangbum Kim. [LICENSE](LICENSE)와 의존성·Go 표준
+라이브러리 고지인 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES)를 참고하세요.

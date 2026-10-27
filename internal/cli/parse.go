@@ -15,6 +15,7 @@ type options struct {
 	config  string
 	json    bool
 	verbose bool
+	connect bool
 	backup  string
 	help    bool
 }
@@ -42,7 +43,7 @@ func parse(args []string) (options, error) {
 		return opts, apperr.New("usage", "a command is required; use --help")
 	}
 	switch rest[0] {
-	case "backup", "status", "verify", "version":
+	case "backup", "status", "verify", "check", "version":
 		opts.command = rest[0]
 	default:
 		return opts, apperr.New("usage", "unknown command; use --help")
@@ -54,6 +55,9 @@ func parse(args []string) (options, error) {
 	fs.BoolVar(&opts.help, "h", false, "show help")
 	if opts.command == "backup" {
 		fs.BoolVar(&opts.verbose, "verbose", false, "safe stage diagnostics on stderr")
+	}
+	if opts.command == "check" {
+		fs.BoolVar(&opts.connect, "connect", false, "opt in to remote Status probes")
 	}
 	if opts.command == "verify" {
 		fs.StringVar(&opts.backup, "backup", "", "local backup directory name")

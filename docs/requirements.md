@@ -20,7 +20,7 @@
 
 | ID | 요구사항 | 구현·검증 근거 |
 |---|---|---|
-| CLI | backup/status/verify/version, 엄격 TOML, 사람용/JSON | `internal/cli/*`, `internal/config/*` 및 해당 테스트; 전체 통합 version/backup/verify/offline 시나리오 |
+| CLI | backup/status/verify/check/version, 엄격 TOML, 사람용/JSON | `internal/cli/*`, `internal/config/*` 및 해당 테스트; MVP 통합 version/backup/verify/offline 시나리오와 후속 check/출력/도움말 대상 테스트 |
 | AUTH | TLS/mTLS, private password_file, 비밀 비노출 | `config/client.go`, `credentials.go`, canary/FIFO 테스트; 통합 TLS·비밀번호·잘못된 CA/auth 검사 |
 | EP | 순차 전환, cluster/member 확인과 기존 cluster pin | `backup/source.go`, `publish.go`, `metadata.go`; headerless fixture, 신원 변경 단위 테스트; 실제 failover/mismatch 통합 |
 | SNAP | Go Snapshot API, 공식 로컬 구조 검사 | `backup/source.go`, `inspect.go`; 실제 3.7.3 백업·로컬 verify·복원 읽기 |
@@ -52,6 +52,15 @@
   전이 모듈 `golang.org/x/crypto`의 미사용 `openpgp` 경고 GO-2026-5932는 보고되지만
   해당 package를 import/호출하지 않는다. 이는 전체 보안 보증이 아니다.
 - 독립 구현 리뷰와 한정된 보안 소스 리뷰에서 미해결 구체적 결함 없음.
+
+## 후속 사용성 개선 검증
+
+- 진행 로그, 정적 오류별 복구 안내, 사람용 상태 요약, 명령별 도움말과 README의 첫 실행 흐름을 개선했다.
+- 새 `check`는 기본 오프라인이며 명시된 인증 자료를 읽고 저장 경로를 읽기 전용으로 점검한다.
+  `--connect`만 후보별 Status 접속을 허용한다. 기존 `status`/`verify`는 인증 자료도 읽지 않는다.
+- 관련 단위 테스트·fake clock 기반 시간 검사·대상 vet 및 실행 파일 빌드로 확인했다.
+  이전 MVP 전체 통합·패키지 성공을 이 변경의 전체 회귀 검증으로 간주하지 않는다.
+- `check`의 확인됨·미확인·실패 의미와 보장하지 않는 조건은 [운영 안내](operations.md)를 따른다.
 
 ## 명시적인 한계
 

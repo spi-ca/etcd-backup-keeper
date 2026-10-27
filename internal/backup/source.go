@@ -114,17 +114,33 @@ func identityError() error {
 func copySnapshot(ctx context.Context, dst *os.File, src io.Reader, deps dependencies) error {
 	buffer := make([]byte, 128*1024)
 	emptyReads := 0
+	var received int64
+	var lastProgress time.Time
+	if deps.progress != nil {
+		lastProgress = deps.progress.now()
+		deps.emit(Progress{Stage: Receiving})
+		// Report the final received count even for a small or failed stream.
+		defer func() { deps.emit(Progress{Stage: Received, Bytes: received}) }()
+	}
 	for {
 		if ctx.Err() != nil {
 			return incompleteContext(ctx)
 		}
 		n, readErr := src.Read(buffer)
 		if n > 0 {
+			received += int64(n)
 			written, writeErr := deps.write(dst, buffer[:n])
 			if writeErr != nil || written != n {
 				return localError()
 			}
 			emptyReads = 0
+			if deps.progress != nil {
+				now := deps.progress.now()
+				if now.Sub(lastProgress) >= time.Second {
+					deps.emit(Progress{Stage: Receiving, Bytes: received})
+					lastProgress = now
+				}
+			}
 		} else {
 			emptyReads++
 		}
