@@ -43,6 +43,10 @@ func must(t *testing.T, err error) {
 }
 func fixture(t *testing.T) []byte {
 	t.Helper()
+	return fixtureWithStorage(t, "3.7.0")
+}
+func fixtureWithStorage(t *testing.T, version string) []byte {
+	t.Helper()
 	path := filepath.Join(t.TempDir(), "fixture.db")
 	db, err := bolt.Open(path, 0600, nil)
 	must(t, err)
@@ -51,7 +55,7 @@ func fixture(t *testing.T) []byte {
 		if err != nil {
 			return err
 		}
-		if err = meta.Put([]byte("storageVersion"), []byte("3.7.0")); err != nil {
+		if err = meta.Put([]byte("storageVersion"), []byte(version)); err != nil {
 			return err
 		}
 		key, err := tx.CreateBucket([]byte("key"))

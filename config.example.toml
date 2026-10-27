@@ -2,6 +2,8 @@
 # Copy to /etc/etcd-backup-keeper/config.toml and adapt non-secret values.
 # Exact lowercase keys only; unknown fields/tables are rejected.
 
+# Supported servers: stable etcd 3.6.x / 3.7.x only (no prerelease/unknown lines).
+# Snapshot storage: 3.6.0 / 3.7.0, checked independently of server version.
 # Ordered candidates. Each snapshot uses ONE member, not load balancing.
 # No credentials, query strings, fragments or non-root paths in URLs.
 endpoints = ["https://127.0.0.1:2379"]
@@ -13,7 +15,7 @@ min_free_bytes = 1073741824
 
 # Positive Go duration strings. Defaults: 5s and 30m respectively.
 # dial_timeout bounds each candidate's initialization/auth + Status probe.
-# etcd 3.7 client creation is nonblocking: DialTimeout alone does not bound a
+# The bundled etcd 3.7 client creation is nonblocking: DialTimeout alone does not bound a
 # connection; the engine must also use Config.DialContext for its initial probe.
 # request_timeout bounds the WHOLE command after config loading (all attempts
 # and the entire snapshot stream), not idle time. Parent cancellation wins.

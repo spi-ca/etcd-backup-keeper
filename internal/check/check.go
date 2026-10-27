@@ -5,12 +5,12 @@ package check
 import (
 	"context"
 	"errors"
-	"regexp"
 	"strconv"
 	"strings"
 
 	"etcd-backup-keeper/internal/apperr"
 	"etcd-backup-keeper/internal/config"
+	"etcd-backup-keeper/internal/etcdcompat"
 	"etcd-backup-keeper/internal/storage"
 )
 
@@ -135,12 +135,12 @@ func run(ctx context.Context, cfg config.Config, connect bool, open factory) (Re
 			record(apperr.New("cluster_mismatch", "candidate cluster identities do not match"))
 			continue
 		}
-		if !supportedVersion.MatchString(info.version) {
-			add("candidate_status", Failed, "Remote candidate server version is not supported; etcd 3.7 is required.", index+1)
-			record(apperr.New("server_unsupported", "only etcd 3.7 servers are supported"))
+		if !etcdcompat.Server(info.version) {
+			add("candidate_status", Failed, "Remote candidate server version is not supported; stable etcd 3.6.x or 3.7.x is required.", index+1)
+			record(apperr.New("server_unsupported", "only stable etcd 3.6.x and 3.7.x servers are supported"))
 			continue
 		}
-		add("candidate_status", Confirmed, "Status returned a valid identity and supported etcd 3.7 version, consistent with the configured pin and other observed candidate identities.", index+1)
+		add("candidate_status", Confirmed, "Status returned a valid identity and supported stable etcd 3.6.x or 3.7.x version, consistent with the configured pin and other observed candidate identities.", index+1)
 	}
 	deferLimits()
 	if err := ctx.Err(); err != nil {
@@ -148,8 +148,6 @@ func run(ctx context.Context, cfg config.Config, connect bool, open factory) (Re
 	}
 	return result, firstErr
 }
-
-var supportedVersion = regexp.MustCompile(`^3\.7\.[0-9]+$`)
 
 func probe(ctx context.Context, cfg config.Config, index int, open factory) (status, error) {
 	dialCtx, cancel := cfg.DialContext(ctx)

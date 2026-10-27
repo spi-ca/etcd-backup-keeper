@@ -85,6 +85,12 @@ timeout은 양수 Go duration 문자열입니다. 전체 제한은 idle timeout�
 
 ### 후보와 클러스터 신원
 
+안정판 etcd **3.6.x / 3.7.x** 서버와 스냅샷 저장 형식 **3.6.0 / 3.7.0**만
+허용합니다. patch 번호는 서버 버전에만 적용하며 prerelease, 알 수 없는 버전이나
+다른 minor/major는 거부합니다. 롤링 업그레이드 중 서버와 저장 형식의 minor가
+달라도 각각 지원 범위이면 허용하지만, 스트림의 저장 형식과 실제 로컬 검사 결과는
+일치해야 합니다. 버전 검사를 생략하는 옵션은 없습니다.
+
 도달 가능한 모든 후보의 Status를 먼저 검사하고, 순서대로 한 멤버에서 스냅샷을
 받습니다. 연결·원격 스트림 실패에만 다음 후보를 시도합니다. 로컬 쓰기·검사·확정
 실패를 후보 전환으로 숨기지 않습니다. 이전 완료 백업 또는 `expected_cluster_id`와
@@ -150,7 +156,7 @@ root 또는 실행 UID 소유이고 group/world 쓰기가 없어야 합니다(ro
 
 `--connect`만 원격 client 생성·인증과 **각 후보의 Status**를 허용합니다. 전체는
 `request_timeout`, 후보별 생성 중 동기 인증과 Status는 남은 `dial_timeout`으로 제한합니다.
-유효한 header·0이 아닌 cluster/member ID·etcd 3.7 버전, `expected_cluster_id` 및 관측한
+유효한 header·0이 아닌 cluster/member ID·안정판 etcd 3.6.x/3.7.x 버전, `expected_cluster_id` 및 관측한
 도달 가능 후보 사이의 cluster 일치를 검사합니다. 후보 하나라도 접속/Status 실패하면
 전체가 실패하며 다른 후보 성공으로 숨기지 않습니다. 스냅샷은 요청하지 않으므로 Status
 성공도 스냅샷 권한을 확인한 것은 아닙니다. 이전 완료 백업의 cluster pin은 읽지 않습니다.

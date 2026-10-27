@@ -12,7 +12,7 @@
 - **Go 1.27.x 최신 patch:** 일반 PR/main push/기본 수동 실행에서는 위 light 검사만 수행한다.
   **`release/`로 시작하는 head branch의 PR** 또는 수동 실행에서 boolean **`full=true`**를
   명시한 경우에만 race, `CGO_ENABLED=0` Linux amd64 빌드, 라이선스 고지 diff,
-  전체 격리 etcd 3.7.3 통합, 재현 deb/Arch 패키지 빌드와 dpkg/pacman 수명주기를 추가한다.
+  전체 격리 etcd **3.6.8 및 3.7.3** 각각의 동일한 18개 시나리오 통합, 재현 deb/Arch 패키지 빌드와 dpkg/pacman 수명주기를 추가한다.
   수동 실행의 `full` 기본값은 false다. 이미지/호스트 도구 준비도 같은 full 조건에서만
   실행한다. workflow run 이름과 각 lane 이름에 실제 full/light 범위를 표시한다.
 
@@ -33,9 +33,13 @@ systemd 의존성은 제공하는 service/timer를 위한 것이다.
 
 ```sh
 python3 scripts/integration-test.py \
+  --image gcr.io/etcd-development/etcd:v3.6.8 \
   --binary /absolute/path/to/static/etcd-backup-keeper \
-  --evidence-dir /new/evidence/directory
+  --evidence-dir /new/evidence/3.6.8
 ```
+
+3.7.3도 `--image gcr.io/etcd-development/etcd:v3.7.3`과 별도 새 evidence 경로로
+똑같이 실행한다. CI 경로는 `ci-integration-3.6.8`, `ci-integration-3.7.3`으로 분리한다.
 
 기본 full 모드의 성공은 TLS/mTLS·인증·복원을 포함한 assertion의 skip 없는 성공을
 요구한다. `--fixtures-only`는 별도의 선택적 오프라인 개발 모드이며 CI에서 사용하지
@@ -60,6 +64,14 @@ AppArmor userns profile을 로드한다. 전체 AppArmor 해제나 전역 sysctl
 - 공식 etcd 이미지
   `gcr.io/etcd-development/etcd@sha256:b4a41c6864baf573f5213dce18b2a95e1002ec6c5a1a26ad900c2ea166ac6d0b`
   를 pull한 뒤 harness가 `--pull=never`로 사용하는 `:v3.7.3` 태그를 붙인다.
+- 공식 etcd 3.6.8 이미지는
+  `gcr.io/etcd-development/etcd@sha256:aa2b41e3f99c9a337b82f687875a63c5119e6d39bc43fc76b6c40a96f55cf391`로
+  고정하여 `:v3.6.8`로 준비한다. 이 linux/amd64 digest는 공식 `:v3.6.8`을
+  `podman pull --platform linux/amd64`로 받은 후 로컬 `RepoDigests`와 `Digest`에서 확인했다.
+  격리 `--pull=never --network=none --read-only --cap-drop=all` 컨테이너에서 실행한
+  `/usr/local/bin/etcd --version`은 종료 0, `etcd Version: 3.6.8`, `Git SHA: 4e814e2`,
+  `Go Version: go1.24.13`, `Go OS/Arch: linux/amd64`를 보고했다. 이는 이미지 출처·실행
+  확인이며 변경된 제품 바이너리의 통합 성공을 뜻하지 않는다.
 - [`ubuntu.Dockerfile`](https://github.com/spi-ca/etcd-backup-keeper/blob/main/packaging/tests/ubuntu.Dockerfile)은 digest 고정 공식 Ubuntu
   24.04에서 dpkg·Bash·CA·systemd 도구 이미지를 만든다. 빈 build context를 사용한다.
   로컬 태그는 `localhost/etcd-backup-keeper-test-ubuntu:24.04`다. apt 패키지 revision은
@@ -76,7 +88,7 @@ AppArmor userns profile을 로드한다. 전체 AppArmor 해제나 전역 sysctl
 ## 결과와 action 갱신
 
 14일 보관 artifact는 명시된 파일만 업로드한다: 도구 버전 log/빌드 manifest,
-통합 최상위 **sanitized** `integration.log`/`summary.json`, 패키지 `lifecycle.log`/
+두 버전별 경로의 최상위 **sanitized** `integration.log`/`summary.json`, 패키지 `lifecycle.log`/
 `manifest.txt`, initial/upgrade `.deb` 및 Arch `lifecycle.log`/`manifest.txt`와
 initial/upgrade `.pkg.tar.zst`. full 성공 시 같은 검증 바이너리도 별도 artifact에 보관하여
 manifest hash와 비교할 수 있다. TLS 개인키, 비밀번호, 스냅샷, 원본 fixture와

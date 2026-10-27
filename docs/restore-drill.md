@@ -15,9 +15,10 @@
   사용합니다. 운영 data-dir을 덮어쓰거나 기존 멤버에 연결하지 않습니다.
 - 운영 endpoint·kubeconfig·운영 프로세스를 테스트에 사용하지 않습니다. 예시의
   loopback과 포트도 격리 호스트에서 사용 중이 아닌지 먼저 확인합니다.
-- 개발용 외부 도구 `etcd`, `etcdctl`, `etcdutl` **3.7.3**을 별도로 준비하고 버전을
-  확인합니다. 제품 CLI의 런타임 의존성이 아니며 제품이 설치·다운로드하지 않습니다.
-- 공식 절차: <https://etcd.io/docs/v3.7/op-guide/recovery/>. 운영 재해 복구는 실제
+- 백업 원본 버전에 맞는 개발용 외부 도구 `etcd`, `etcdctl`, `etcdutl`을
+  별도로 준비하고 버전을 확인합니다(격리 통합 대상: **3.6.8 / 3.7.3**). 제품 CLI의 런타임 의존성이 아니며 제품이 설치·다운로드하지 않습니다.
+- 공식 절차: [3.6](https://etcd.io/docs/v3.6/op-guide/recovery/) /
+  [3.7](https://etcd.io/docs/v3.7/op-guide/recovery/). 운영 재해 복구는 실제
   etcd/Kubernetes 버전·토폴로지에 맞는 별도 승인된 계획이 필요합니다.
 
 ## 1. 완료 백업 선택과 오프라인 검사

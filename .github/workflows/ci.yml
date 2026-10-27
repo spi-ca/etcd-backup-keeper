@@ -99,13 +99,22 @@ jobs:
         if: matrix.full && ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/')))
         timeout-minutes: 10
         run: bash scripts/ci-bootstrap.sh
+      - name: Full isolated etcd 3.6.8 integration (TLS, auth and restore)
+        if: matrix.full && ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/')))
+        timeout-minutes: 10
+        run: |
+          python3 scripts/integration-test.py \
+            --image gcr.io/etcd-development/etcd:v3.6.8 \
+            --binary "$RUNNER_TEMP/ci-bin/etcd-backup-keeper" \
+            --evidence-dir "$RUNNER_TEMP/ci-integration-3.6.8"
       - name: Full isolated etcd 3.7.3 integration (TLS, auth and restore)
         if: matrix.full && ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/')))
         timeout-minutes: 10
         run: |
           python3 scripts/integration-test.py \
+            --image gcr.io/etcd-development/etcd:v3.7.3 \
             --binary "$RUNNER_TEMP/ci-bin/etcd-backup-keeper" \
-            --evidence-dir "$RUNNER_TEMP/ci-integration"
+            --evidence-dir "$RUNNER_TEMP/ci-integration-3.7.3"
       - name: Reproducible deb and offline dpkg lifecycle
         if: matrix.full && ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/')))
         timeout-minutes: 5
@@ -141,8 +150,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
           path: |
-            ${{ runner.temp }}/ci-integration/integration.log
-            ${{ runner.temp }}/ci-integration/summary.json
+            ${{ runner.temp }}/ci-integration-3.6.8/integration.log
+            ${{ runner.temp }}/ci-integration-3.6.8/summary.json
+            ${{ runner.temp }}/ci-integration-3.7.3/integration.log
+            ${{ runner.temp }}/ci-integration-3.7.3/summary.json
             ${{ runner.temp }}/ci-package/lifecycle.log
             ${{ runner.temp }}/ci-package/manifest.txt
             ${{ runner.temp }}/ci-package/initial/*.deb
