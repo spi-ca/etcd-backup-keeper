@@ -71,7 +71,7 @@ assert_mode /usr/bin/$package 755
 assert_mode "$service" 644
 assert_mode "$timer" 644
 cmp "$config" /evidence/original-assets/config.example.toml
-for relative in README.md docs/requirements.md docs/operations.md docs/restore-drill.md integration/README.md .github/README.md config.example.toml LICENSE THIRD_PARTY_NOTICES; do
+for relative in README.md docs/quickstart.md docs/requirements.md docs/operations.md docs/troubleshooting.md docs/restore-drill.md integration/README.md .github/README.md config.example.toml LICENSE THIRD_PARTY_NOTICES; do
     cmp "/usr/share/doc/$package/$relative" "/evidence/original-assets/$relative"
 done
 cmp "/usr/share/doc/$package/copyright" /evidence/original-assets/LICENSE

@@ -1,8 +1,9 @@
 # 운영 안내
 
-이 문서는 수동 실행과 외부 스케줄러 운영을 설명합니다. 지원 범위와 현재 검증
-상태는 [README](../README.md), 배포 입력과 수명주기는
-[패키징 안내](../packaging/README.md)를 먼저 확인하세요.
+이 문서는 **설정·출력·저장 계약과 정기 운영·패키지 수명주기의 기준 문서**입니다.
+첫 설치와 kubeadm 인증서·선택적 cluster ID 조회는 [빠른 시작](quickstart.md),
+오류 코드별 조사는 [문제 해결](troubleshooting.md), 지원 범위는 [README](../README.md)를
+참고하세요. 개발용 패키지 제작·격리 수명주기 시험은 [패키징 안내](../packaging/README.md)로 분리합니다.
 
 ## 1. 실행 환경과 저장소 준비
 
@@ -27,29 +28,16 @@
 
 ## 2. 설정과 인증
 
-[config.example.toml](../config.example.toml)을 복사하고 대상 환경에 맞게 수정합니다.
+패키지 사용자는 설치된 private 설정을 편집하며 기존 설정 위에 example을 덮어쓰지
+않습니다. 첫 설정 절차와 kubeadm 경로는 [빠른 시작](quickstart.md#2-설치된-private-설정을-편집)을
+따릅니다. 모든 키의 비밀 없는 예시는 [config.example.toml](../config.example.toml)입니다.
 설정 디렉터리는 운영자 통제하에 두고 파일은 `0600`으로 관리하세요. 인증서·키·비밀번호는
-패키지에 넣지 않고 별도 배치합니다. 다음은 비밀 값 없는 HTTPS 설정 예입니다.
-
-```toml
-endpoints = ["https://127.0.0.1:2379"]
-backup_dir = "/var/lib/etcd-backup-keeper"
-keep = 7
-min_free_bytes = 1073741824
-dial_timeout = "5s"
-request_timeout = "30m"
-# expected_cluster_id = "0123456789abcdef"
-# ca_file = "/etc/etcd-backup-keeper/ca.crt"
-# cert_file = "/etc/etcd-backup-keeper/client.crt"
-# key_file = "/etc/etcd-backup-keeper/client.key"
-# username = "backup-operator"
-# password_file = "/etc/etcd-backup-keeper/password"
-```
+패키지에 넣지 않고 별도 배치합니다.
 
 ### 설정 계약
 
 평면 TOML이며 **정확한 소문자 키**만 허용합니다. 모르는 키·table은 거부합니다.
-허용 키는 위 예시의 12개입니다. 주석 처리된 값은 활성 설정이 아닙니다.
+허용 키는 아래 12개입니다. 주석 처리된 값은 활성 설정이 아닙니다.
 
 | 키 | 의미 |
 |---|---|
@@ -101,6 +89,9 @@ etcd 3.7.3의 Snapshot 응답 Header는 비어 있습니다. Header가 제공되
 신뢰해야 하며 첫 실행에서 접근할 수 없는 후보의 신원은 미확인입니다.
 
 ## 3. 실행·조회·검증
+
+수동 실행과 timer의 UID·설정·경로를 일치시키세요. 아래는 해당 UID로 실행하는
+예시이며 기본 패키지 root 실행을 재현하려면 `sudo`가 필요합니다.
 
 ```sh
 etcd-backup-keeper backup --config /etc/etcd-backup-keeper/config.toml --verbose
@@ -220,6 +211,15 @@ JSON의 `data`·`error.code`·`error.message` 및 기존 종료 코드 계약은
 원인과 남은 상태를 확인하기 전에 무조건 재실행하거나 `.lock`·미완료·삭제 대기 항목을
 임의로 지우지 마세요.
 
+### 정기 운영 확인
+
+- timer와 service journal, 실제 완료 백업의 시각·개수·미완료 경고를 함께 확인합니다.
+  status는 실행 이력·건강 판정·마지막 verify 기록이 아니므로 스케줄러 실패 감시를 별도로 둡니다.
+- 정책에 따라 완료 백업의 `verify`와 [격리 복원 훈련](restore-drill.md)을 반복하고
+  바이너리 버전·백업 이름·검증 결과를 연결해 private 기록으로 보존합니다.
+- 볼륨의 여유 바이트·inode·오류·지연과 별도 사본 정책을 관리합니다. status의 완료
+  snapshot 크기를 전체 사용량으로 해석하지 않습니다. 오류별 조치는 [문제 해결](troubleshooting.md)을 따릅니다.
+
 ## 4. 확정·보관 정리와 실패 대응
 
 스냅샷 검사와 메타데이터 기록 후 **파일 sync → staging 디렉터리 sync →
@@ -262,15 +262,9 @@ SIGINT/SIGTERM은 취소로 처리합니다. 종료가 완료될 때까지 기�
 설치·업그레이드는 unit을 활성화·시작하지 않고 백업도 실행하지 않습니다.
 설정·인증·저장소와 수동 백업·검증·복원 훈련을 확인한 후 **운영자가** 활성화합니다.
 
-```sh
-sudo systemctl daemon-reload
-sudo systemctl enable --now etcd-backup-keeper.timer
-systemctl list-timers etcd-backup-keeper.timer
-journalctl -u etcd-backup-keeper.service
-```
-
-기본 timer는 daily, 최대 15분 무작위 지연, `Persistent=true`입니다. 활성화하면
-누락된 실행이 곧 시작될 수 있습니다. service는 oneshot이며 `TimeoutStartSec=45min`입니다.
+최초 활성화 명령은 [빠른 시작의 최종 단계](quickstart.md#5-복원-훈련수용-확인-후-timer-활성화)에 있습니다.
+기본 timer는 daily, 최대 15분 무작위 지연, `Persistent=true`입니다. **시작하면 누락된
+실행이 곧 시작될 수 있습니다.** service는 oneshot이며 `TimeoutStartSec=45min`입니다.
 설정 timeout을 늘리면 unit 제한도 함께 검토하세요.
 
 기본 hardening은 `UMask=0077`, `ProtectSystem=strict`, `ProtectHome=true`, 빈
@@ -280,12 +274,16 @@ capability set 등을 포함합니다. 인증 자료를 `/home` 아래에 두지
 실패했으므로 실제 service/timer는 별도 검증이 필요합니다. 이를 통과시키려고
 hardening을 무작정 완화하지 마세요.
 
-업그레이드·remove·purge 전에는 운영자가 timer를 멈추고 실행 중 작업의 완료를
-기다리거나 명시적으로 취소합니다. 바이너리가 실행 중 교체되지 않도록 하세요.
+업그레이드·remove·purge 전에는 운영자가 timer와 기타 스케줄러를 멈추고 실행 중
+service·수동 backup/verify의 완료를 기다리거나 명시적으로 취소한 뒤 **종료 완료를
+확인**합니다. timer 중지는 현재 service를 끝내지 않습니다. 실행 중 바이너리를
+교체하지 마세요. 기존 설정·추가 인증 자료·백업을 승인된 private 위치와 정책으로
+보존하고, 새 example로 운영 설정을 덮어쓰지 않습니다.
 
 ```sh
 sudo systemctl disable --now etcd-backup-keeper.timer
-# 완료를 기다리는 대신 취소할 때만:
+systemctl status etcd-backup-keeper.service
+# 실행 중 작업은 완료를 기다립니다. 대신 취소하기로 결정한 경우에만:
 sudo systemctl stop etcd-backup-keeper.service
 # 승인된 패키지 업그레이드/remove/purge 후:
 sudo systemctl daemon-reload
@@ -293,6 +291,9 @@ sudo systemctl daemon-reload
 
 업그레이드 후 설정·바이너리·unit을 확인하고 의도한 경우에만 timer를 다시
 활성화합니다. 자동 stop/reload를 수행하는 maintainer script는 없습니다.
-설정은 dpkg conffile이며 로컬 수정 충돌 정책은 운영자가 결정합니다.
-remove는 설정을 남기고 purge는 conffile을 지우지만 **둘 다 백업 데이터는
+Deb 설정은 dpkg conffile이며 로컬 수정 충돌 정책은 운영자가 결정합니다. Arch는
+`backup` 파일로 관리하여 새 기본값 충돌은 `.pacnew`, 수정 설정 제거는 `.pacsave`로
+보존합니다. `.pacnew`를 그대로 덮어쓰지 말고 필요한 변경만 검토·반영하세요.
+Arch의 `--nosave`/`-Rn`은 이 보존을 무시하므로 별도 판단이 필요합니다.
+Deb remove는 설정을 남기고 purge는 conffile을 지우지만 **둘 다 백업 데이터는
 보존**합니다. 운영자가 별도 배치한 키·인증서·비밀번호도 자동 정리하지 않습니다.

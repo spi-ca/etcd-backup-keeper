@@ -11,7 +11,7 @@ usage() {
 Usage: scripts/package-build.sh --binary PATH --version VERSION --output-dir DIR
        --assets-dir PROJECT_ROOT --maintainer 'Name <email>' [--image LOCAL_IMAGE]
 Requires a static Linux amd64 ELF and these project assets:
-README.md, docs/{requirements,operations,restore-drill}.md,
+README.md, docs/{quickstart,requirements,operations,troubleshooting,restore-drill}.md,
 integration/README.md, .github/README.md, config.example.toml,
 LICENSE, and THIRD_PARTY_NOTICES. Uses local dpkg-deb, or rootless Podman without pulling.
 SOURCE_DATE_EPOCH defaults to 0. No Go build or network access is performed.
@@ -44,7 +44,7 @@ for tool in readelf install realpath find touch; do command -v "$tool" >/dev/nul
 binary=$(realpath -e -- "$binary")
 assets=$(realpath -e -- "$assets")
 [[ -d $assets ]] || die 'assets source must be a directory'
-for relative in README.md docs/requirements.md docs/operations.md docs/restore-drill.md integration/README.md .github/README.md config.example.toml LICENSE THIRD_PARTY_NOTICES; do
+for relative in README.md docs/quickstart.md docs/requirements.md docs/operations.md docs/troubleshooting.md docs/restore-drill.md integration/README.md .github/README.md config.example.toml LICENSE THIRD_PARTY_NOTICES; do
     file=$assets/$relative
     [[ -f $file && ! -L $file && -r $file ]] || die "missing/nonregular/symlink asset: $relative"
     [[ $(realpath -e -- "$file") == "$assets/"* ]] || die "asset escapes source directory: $relative"
@@ -82,7 +82,7 @@ install -m 0644 "$repo/packaging/systemd/etcd-backup-keeper.service" "$repo/pack
 install -m 0644 "$assets/README.md" "$root/usr/share/doc/etcd-backup-keeper/README.md"
 install -m 0644 "$assets/LICENSE" "$root/usr/share/doc/etcd-backup-keeper/copyright"
 install -m 0644 "$assets/THIRD_PARTY_NOTICES" "$root/usr/share/doc/etcd-backup-keeper/THIRD_PARTY_NOTICES"
-for relative in docs/requirements.md docs/operations.md docs/restore-drill.md integration/README.md .github/README.md config.example.toml LICENSE; do
+for relative in docs/quickstart.md docs/requirements.md docs/operations.md docs/troubleshooting.md docs/restore-drill.md integration/README.md .github/README.md config.example.toml LICENSE; do
     install -m 0644 "$assets/$relative" "$root/usr/share/doc/etcd-backup-keeper/$relative"
 done
 install -m 0644 "$repo/packaging/README.md" "$root/usr/share/doc/etcd-backup-keeper/packaging/README.md"

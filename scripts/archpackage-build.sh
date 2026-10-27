@@ -13,6 +13,10 @@ Usage: scripts/archpackage-build.sh --binary PATH --version YYYYMMDD-PKGREL
        [--image LOCAL_IMAGE]
 Builds an x86_64 .pkg.tar.zst from a supplied static amd64 ELF, without executing
 it. Requires cached Arch base-devel and rootless Podman. No pulls or network.
+Required project assets: README.md,
+docs/{quickstart,requirements,operations,troubleshooting,restore-drill}.md,
+integration/README.md, .github/README.md, config.example.toml, LICENSE,
+and THIRD_PARTY_NOTICES.
 SOURCE_DATE_EPOCH defaults to 0; equal inputs/tool image/epoch are reproducible.
 EOF
 }
@@ -48,7 +52,7 @@ for tool in podman readelf install realpath find touch sed date; do command -v "
 binary=$(realpath -e -- "$binary")
 assets=$(realpath -e -- "$assets")
 [[ -d $assets ]] || die 'assets source must be a directory'
-asset_files=(README.md docs/requirements.md docs/operations.md docs/restore-drill.md integration/README.md .github/README.md config.example.toml LICENSE THIRD_PARTY_NOTICES)
+asset_files=(README.md docs/quickstart.md docs/requirements.md docs/operations.md docs/troubleshooting.md docs/restore-drill.md integration/README.md .github/README.md config.example.toml LICENSE THIRD_PARTY_NOTICES)
 for relative in "${asset_files[@]}"; do
     file=$assets/$relative
     [[ -f $file && ! -L $file && -r $file ]] || die "missing/nonregular/symlink asset: $relative"
