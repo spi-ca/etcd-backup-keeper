@@ -11,7 +11,7 @@ etcd의 온라인 전체 스냅샷을 로컬에 저장하고, 무결성을 검�
 - etcd **3.7** 계열을 지원하며 개발·격리 검증 기준은 **3.7.3**입니다.
 - Linux와 `/proc`, 동일 실행 파일을 다시 실행하는 로컬 검사 helper가 필요합니다.
 - 소스 빌드에는 최소 Go **1.26**이 필요합니다.
-- 패키지 검증 기준은 **Ubuntu 24.04 amd64**입니다. 실제 배포 OS/CPU, 운영
+- 패키지 검증 대상은 **Ubuntu 24.04 amd64 (.deb)** 및 **Arch Linux x86_64 (.pkg.tar.zst)**입니다. 실제 배포 OS/CPU, 운영
   볼륨의 내구성, systemd 환경은 배포 대상에서 별도로 확인해야 합니다.
 - 한 멤버에서 스냅샷을 받으며 디스크·네트워크 부하가 발생합니다. 서비스 중지·
   재시작, defrag/compaction, 클러스터 구성 변경은 하지 않습니다.
@@ -92,7 +92,7 @@ unit을 자동 활성화·시작하거나 백업을 실행하지 않습니다. �
 
 - [운영 안내](docs/operations.md): 설정·인증, 저장소, 출력·종료 코드, 실패 대응, 스케줄러
 - [격리 복원 훈련](docs/restore-drill.md): 새 데이터 디렉터리·포트에서 수동 복원 확인
-- [Ubuntu 패키징](packaging/README.md): 명시적 빌드 입력, 설치·업그레이드·제거
+- [Ubuntu / Arch 패키징](packaging/README.md): 동일한 정적 CLI의 deb/Arch 빌드, 설치·업그레이드·제거
 - [통합 테스트](integration/README.md): 격리 etcd의 TLS·인증·복원·실패 시나리오
 - [요구사항과 검증 매핑](docs/requirements.md): 설계 근거, 로컬 검증 기록과 한계
 - [CI 범위](.github/README.md) · [Actions](https://github.com/spi-ca/etcd-backup-keeper/actions): 검사 범위와 hosted 실행 결과

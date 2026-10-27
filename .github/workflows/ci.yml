@@ -1,10 +1,16 @@
 name: CI
+run-name: CI / ${{ ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/'))) && 'full release validation' || 'light checks' }} / ${{ github.head_ref || github.ref_name }}
 
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      full:
+        description: Run the full race, integration and deb/Arch packaging gates
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -15,7 +21,7 @@ concurrency:
 
 jobs:
   validate:
-    name: Go ${{ matrix.go }}${{ matrix.full && ' / integration + package' || '' }}
+    name: Go ${{ matrix.go }}${{ matrix.full && ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/'))) && ' / full (race + integration + deb + Arch)' || ' / light' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     strategy:
@@ -57,41 +63,64 @@ jobs:
           go test -count=1 ./...
           go vet ./...
       - name: Race tests
-        if: matrix.full
+        if: matrix.full && ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/')))
         timeout-minutes: 10
         run: go test -race -count=1 ./...
       - name: Static Linux amd64 build and license notices
-        if: matrix.full
+        if: matrix.full && ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/')))
         timeout-minutes: 5
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          RELEASE_PR: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') }}
         run: |
           mkdir -p "$RUNNER_TEMP/ci-bin"
+          version=dev
+          package_version=20261027-1
+          if [[ $RELEASE_PR == true ]]; then
+            [[ $HEAD_REF =~ ^release/v([0-9]{8}-[1-9][0-9]{0,5})$ ]] || { echo 'Invalid release head ref' >&2; exit 1; }
+            package_version=${BASH_REMATCH[1]}
+            release_date=${package_version%-*}
+            [[ $(date -u -d "$release_date" +%Y%m%d) == "$release_date" ]] || exit 1
+            version=v$package_version
+          fi
+          printf 'CI_BINARY_VERSION=%s\nCI_PACKAGE_VERSION=%s\n' "$version" "$package_version" >> "$GITHUB_ENV"
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -buildvcs=false \
-            -o "$RUNNER_TEMP/ci-bin/etcd-backup-keeper" ./cmd/etcd-backup-keeper
+            -ldflags "-X main.version=$version" -o "$RUNNER_TEMP/ci-bin/etcd-backup-keeper" ./cmd/etcd-backup-keeper
           bash scripts/third-party-notices.sh > "$RUNNER_TEMP/THIRD_PARTY_NOTICES.generated"
           diff -u THIRD_PARTY_NOTICES "$RUNNER_TEMP/THIRD_PARTY_NOTICES.generated"
           {
             printf 'source=%s\n' "$(git rev-parse HEAD)"
             printf 'target=linux/amd64 CGO_ENABLED=0\n'
+            printf 'binary_version=%s\npackage_version=%s\n' "$version" "$package_version"
+            "$RUNNER_TEMP/ci-bin/etcd-backup-keeper" version
             sha256sum "$RUNNER_TEMP/ci-bin/etcd-backup-keeper"
           } > "$RUNNER_TEMP/ci-evidence/manifest.txt"
       - name: Prepare isolated test tools and images
-        if: matrix.full
+        if: matrix.full && ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/')))
         timeout-minutes: 10
         run: bash scripts/ci-bootstrap.sh
       - name: Full isolated etcd 3.7.3 integration (TLS, auth and restore)
-        if: matrix.full
+        if: matrix.full && ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/')))
         timeout-minutes: 10
         run: |
           python3 scripts/integration-test.py \
             --binary "$RUNNER_TEMP/ci-bin/etcd-backup-keeper" \
             --evidence-dir "$RUNNER_TEMP/ci-integration"
       - name: Reproducible deb and offline dpkg lifecycle
-        if: matrix.full
+        if: matrix.full && ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/')))
         timeout-minutes: 5
         run: |
           bash scripts/package-test.sh \
             --binary "$RUNNER_TEMP/ci-bin/etcd-backup-keeper" --binary-kind real \
             --assets-dir "$GITHUB_WORKSPACE" --evidence-dir "$RUNNER_TEMP/ci-package"
+      - name: Reproducible Arch package and offline pacman lifecycle
+        if: matrix.full && ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/')))
+        timeout-minutes: 5
+        run: |
+          bash scripts/archpackage-test.sh \
+            --binary "$RUNNER_TEMP/ci-bin/etcd-backup-keeper" --binary-kind real \
+            --assets-dir "$GITHUB_WORKSPACE" --evidence-dir "$RUNNER_TEMP/ci-archpackage" \
+            --version "$CI_PACKAGE_VERSION" --expected-version "$CI_BINARY_VERSION"
       # Explicit files only: NEVER upload the evidence trees or secret fixtures.
       - name: Upload build and tool provenance
         if: always()
@@ -105,10 +134,10 @@ jobs:
             ${{ runner.temp }}/ci-evidence/bootstrap.log
             ${{ runner.temp }}/ci-evidence/manifest.txt
       - name: Upload sanitized integration and packaging evidence
-        if: always() && matrix.full
+        if: always() && (matrix.full && ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/'))))
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: integration-and-test-debs
+          name: integration-and-test-packages
           if-no-files-found: warn
           retention-days: 14
           path: |
@@ -118,3 +147,15 @@ jobs:
             ${{ runner.temp }}/ci-package/manifest.txt
             ${{ runner.temp }}/ci-package/initial/*.deb
             ${{ runner.temp }}/ci-package/upgrade/*.deb
+            ${{ runner.temp }}/ci-archpackage/lifecycle.log
+            ${{ runner.temp }}/ci-archpackage/manifest.txt
+            ${{ runner.temp }}/ci-archpackage/initial/*.pkg.tar.zst
+            ${{ runner.temp }}/ci-archpackage/upgrade/*.pkg.tar.zst
+      - name: Upload validated static binary for provenance
+        if: success() && (matrix.full && ((github.event_name == 'workflow_dispatch' && inputs.full) || (github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/'))))
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: static-linux-amd64
+          if-no-files-found: error
+          retention-days: 14
+          path: ${{ runner.temp }}/ci-bin/etcd-backup-keeper
