@@ -1,6 +1,6 @@
-# Ubuntu 패키징
+# Ubuntu / Arch Linux 패키징
 
-대상은 **Ubuntu 24.04 amd64**다. 이 디렉터리는 Go 엔진과 독립적이다.
+대상은 **Ubuntu 24.04 amd64 (.deb)** 및 **Arch Linux x86_64 (.pkg.tar.zst)**다. 이 디렉터리는 Go 엔진과 독립적이다.
 빌더는 명시적으로 전달받은 정적 ELF 실행 파일을 복사할 뿐 Go 빌드, 다운로드,
 네트워크 접근, 호스트 패키지 설치, 서비스 실행을 하지 않는다. 패키지 검사는
 실제 정적 Go 바이너리로 실행한다. 선택적인 C stub은 패키징 개발용 fixture이며
@@ -16,7 +16,7 @@ integration/CI 안내, config.example.toml, LICENSE, THIRD_PARTY_NOTICES만** �
 ```sh
 scripts/package-build.sh \
   --binary /absolute/path/to/static-linux-amd64/etcd-backup-keeper \
-  --version 0.1.0 \
+  --version 20261027-1 \
   --output-dir "$PWD/packaging/artifacts/release" \
   --assets-dir /absolute/path/to/frozen-project-assets \
   --maintainer 'Actual package maintainer <actual-address@example.org>'
@@ -66,6 +66,76 @@ conffile 처리에 맡긴다. 변경된 기본 설정과 로컬 수정이 충돌
 제거는 설정을 남기고 purge는 conffile을 제거하지만 **백업은 둘 다 보존**한다.
 추가한 인증서·비밀번호 파일은 패키지 소유가 아니며 purge가 정리하지 않는다.
 
+## Arch Linux 패키징
+
+Deb과 **동일한 정적 Linux amd64 ELF**를 전달한다. 정적 CLI의 런타임에는 Go,
+외부 `etcdctl`/`etcdutl`이 필요하지 않다. 패키지의 `depends=('systemd')`는 제공하는
+service/timer용이며 etcd 서버를 설치하거나 시작하지 않는다. Arch 기본 도구 이미지가
+미리 캐시되어 있어야 한다. 호스트 `makepkg`/`fakeroot`/`pacman`은 사용하지 않는다.
+
+```sh
+scripts/archpackage-build.sh \
+  --binary /absolute/path/to/static-linux-amd64/etcd-backup-keeper \
+  --version 20261027-1 \
+  --assets-dir /absolute/path/to/frozen-project-assets \
+  --output-dir "$PWD/packaging/artifacts/arch-release" \
+  --packager 'Actual package maintainer <actual-address@example.org>'
+```
+
+- 버전은 유효한 날짜 `YYYYMMDD-PKGREL`만 받는다. `20261027-1`은
+  `pkgver=20261027`, `pkgrel=1`, 아키텍처 `x86_64`로 매핑한다. pkgrel은 선행 0 없는
+  1~999999다. `--packager`는 보수적인 영문 이름/이메일 단일 필드이며 필수다.
+  문자열을 shell 코드로 평가하지 않는다. ELF·자산·epoch 검사는 Deb과 같은 경계다.
+- 기본 이미지는 `docker.io/library/archlinux:base-devel`이며 `--image`로 캐시된
+  Linux amd64 이미지를 지정할 수 있다. 필요한 도구는 makepkg, fakeroot, bsdtar,
+  zstd, pacman, systemctl, systemd-analyze다. 이미지 준비는 별도 승인된 작업이다.
+  빌드는 rootless Podman의 `--pull=never --network=none --userns=keep-id`, 비root
+  사용자와 전용 writable HOME에서 수행한다. 호스트 도구 설치나 다운로드는 없다.
+- 체크인된 `arch/PKGBUILD.in`은 소스 다운로드/컴파일 없이 명시적 payload만 복사한다.
+  `strip`/`debug`를 비활성화해 제공된 바이너리 바이트를 유지한다. fakeroot가 archive를
+  root:root로 기록하며 timestamp는 `SOURCE_DATE_EPOCH`(기본 0), zstd는 단일 thread다.
+  같은 입력/epoch/**같은 도구 이미지**에서 두 빌드의 바이트 동일성을 시험한다.
+  결과는 `.pkg.tar.zst`이며 기존 결과를 원자적으로 덮어쓰지 않고 거부한다.
+- 설치 경로·권한은 위 표와 같다. 추가로 표준 Arch 라이선스 위치인
+  `/usr/share/licenses/etcd-backup-keeper/LICENSE`에 LICENSE를 포함한다.
+  `backup=('etc/etcd-backup-keeper/config.toml')`로 로컬 설정 변경을 보호한다.
+  패키지 `.install` script, ALPM hook, 자동 enable/start, `/var` payload는 없다.
+  시스템이 이미 제공하는 pacman hook은 동작할 수 있으나 이 패키지는 자동 활성화를
+  요청하지 않는다. 실제 노드의 reload/stop/enable은 아래 운영 절차로 수행한다.
+- 변경된 기본 템플릿과 운영자 수정이 충돌하면 기존 설정은 유지되고 새 기본값은
+  `.pacnew`로 남는다. 수정 설정은 `pacman -R`에서 `.pacsave`로 보존된다.
+  `--nosave`/`-Rn`은 이 보존 정책을 무시하므로 운영자가 별도로 판단해야 한다.
+  백업 데이터나 별도 인증 자료는 패키지 소유가 아니며 제거하지 않는다.
+
+### 격리된 Arch 수명주기 시험
+
+```sh
+scripts/archpackage-test.sh \
+  --binary /absolute/path/to/static-linux-amd64/etcd-backup-keeper \
+  --binary-kind real --assets-dir /absolute/path/to/frozen-project-assets \
+  --version 20261027-1 --expected-version v20261027-1 \
+  --evidence-dir "$PWD/packaging/test-results-arch-release"
+```
+
+`--expected-version`은 선택 사항이다(`dev` 또는 `vYYYYMMDD-PKGREL`). 릴리스 검증 시
+명시하여 설치 바이너리의 실제 version 출력을 확인한다. 패키지 버전만으로 바이너리의
+버전/출처를 보장하지 않는다. 시험 기본 패키지 버전은 `20261027-1`이고 upgrade는
+자동으로 pkgrel+1이다. 예약된 테스트 packager를 사용하므로 산출물은 배포용이 아니다.
+
+동일 패키지를 두 번 빌드해 `cmp`한 뒤 기본 템플릿만 바꾼 upgrade를 만든다.
+폐기 가능한 rootless/network-off Arch 컨테이너에서 archive의 정확한 allowlist,
+root 소유권, 버전/의존성/backup 메타데이터와 script/hook·`/var` 부재를 검사한 뒤
+실제 `pacman -U` → 운영자 설정 수정 → upgrade → `pacman -R`를 수행한다.
+이미지에 systemd 의존성이 있어 외부 저장소 접근은 필요 없다. 최소 이미지의 문서 제외는
+이 패키지 doc subtree만 예외로 하여 설치 내용을 비교한다. `.pacnew`/`.pacsave`의
+내용과 0600, 설정 디렉터리 0700, 설치 바이너리 hash, 문서/라이선스/unit 원본,
+비활성 unit 상태, 패키지 비소유 백업 sentinel(0700/0600)을 전 단계에서 확인한다.
+`systemd-analyze verify`와 `version`만 실행하며 backup/endpoint에는 접근하지 않는다.
+
+빌드 staging과 컨테이너는 종료 시 정리한다. evidence에는 명시적 입력 자료 사본이
+있으므로 비밀은 입력하지 않는다. CI는 허용된 log/manifest/pkg만 업로드한다.
+**이 시험은 offline 패키지 검증이며 live systemd·실제 백업·복원을 보증하지 않는다.**
+
 ## 운영자가 명시적으로 활성화
 
 아래는 offline 패키지 시험에서 실행하지 않는 **운영 절차**다. 실제 CLI 및
@@ -94,7 +164,7 @@ etcd 버전·TLS·권한·백업/복원 검증이 끝난 바이너리만 사용�
 ```sh
 sudo systemctl disable --now etcd-backup-keeper.timer
 sudo systemctl stop etcd-backup-keeper.service
-# 이후 dpkg remove 또는 purge; 완료 후 운영자가 systemctl daemon-reload
+# 이후 dpkg remove/purge 또는 pacman -R; 완료 후 운영자가 systemctl daemon-reload
 ```
 
 service는 `UMask=0077`, `StateDirectoryMode=0700`, `ProtectSystem=strict`,
