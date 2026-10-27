@@ -5,7 +5,9 @@
 
 ## 확정 범위
 
-- Linux Go CLI, 최소 Go 1.26. etcd 3.7 지원, 실제 격리 검증 기준 3.7.3.
+- Linux Go CLI, 최소 Go 1.26. 안정판 etcd 3.6.x/3.7.x 지원, 저장 형식은 3.6.0/3.7.0.
+  서버/저장 버전은 독립적으로 허용하되 스트림/로컬 DB의 저장 형식은 일치해야 한다.
+  다른 minor/major, prerelease, 알 수 없는 버전은 거부한다.
 - etcd Go client 직접 사용. 런타임에 외부 etcdctl/etcdutl 실행 파일 불필요.
 - 온라인 전체 스냅샷만 생성. 운영 서비스 중지/재시작, defrag/compaction,
   멤버 변경, 자동 복원, 증분 백업, 원격 업로드, 자체 데몬/스케줄러는 제외.
@@ -23,7 +25,7 @@
 | CLI | backup/status/verify/check/version, 엄격 TOML, 사람용/JSON | `internal/cli/*`, `internal/config/*` 및 해당 테스트; MVP 통합 version/backup/verify/offline 시나리오와 후속 check/출력/도움말 대상 테스트 |
 | AUTH | TLS/mTLS, private password_file, 비밀 비노출 | `config/client.go`, `credentials.go`, canary/FIFO 테스트; 통합 TLS·비밀번호·잘못된 CA/auth 검사 |
 | EP | 순차 전환, cluster/member 확인과 기존 cluster pin | `backup/source.go`, `publish.go`, `metadata.go`; headerless fixture, 신원 변경 단위 테스트; 실제 failover/mismatch 통합 |
-| SNAP | Go Snapshot API, 공식 로컬 구조 검사 | `backup/source.go`, `inspect.go`; 실제 3.7.3 백업·로컬 verify·복원 읽기 |
+| SNAP | Go Snapshot API, 공식 로컬 구조 검사 | `etcdcompat/version.go`, `backup/source.go`, `inspect.go`; 양쪽 저장 형식의 합성 fixture 검사 및 실제 3.6.8/3.7.3 백업·로컬 verify·복원 읽기 |
 | STORE | 0700/0600, 배타/공유 잠금, 공간 점검, 위험 경로 거부 | `storage/root_linux.go`; symlink/hardlink/FIFO/권한/잠금 및 외부 sentinel 테스트 |
 | COMMIT | 내장·전체 SHA-256, strict metadata/manifest, sync, no-replace 확정 | `backup/publish.go`, `metadata.go`, `inspect.go`; write/sync/rename 충돌/최종 sync 오류 주입 |
 | STATUS | DB 연결·전체 스냅샷 해싱 없는 상태 조회 | `backup/local.go`; 같은 크기 변조에서 status 성공/verify 실패 및 인증 자료 제거 후 오프라인 통합 |
@@ -37,6 +39,26 @@
 | DOC | 운영·복원·설치·한계 문서 | README, operations, restore-drill, packaging/integration/CI 안내; 문서 링크 및 패키지 문서 사본 검사 |
 
 ## 실행된 로컬 검사
+
+### v20261027-2 호환성 변경
+
+- 서버/저장 버전의 네 조합, 오프라인 verify, 미지원 버전 거부와 기존 백업 보존을
+  단위·프로토콜 fixture 및 관련 Go 테스트/vet로 확인했다.
+- 릴리즈 바이너리 SHA-256:
+  `5cd040e1392a4ce78a819ec091dc1a6a1a849bad15b895034d6aa3e6287815f1`.
+- 동일 바이너리로 공식 **3.6.8 / 3.7.3** 각각의 전체 **18개 통합 시나리오 PASS**,
+  컨테이너/fixture 정리 성공. TLS/mTLS·인증, 백업·verify, 별도 인스턴스 복원 읽기,
+  failover·신원 불일치·실패 시 보존·보관 개수·취소·오프라인 명령을 포함한다.
+- 버전 20261027-2 패키지의 Debian·Arch 재현 빌드와 격리 설치·설정 수정·업그레이드·
+  제거를 확인했다. Debian purge, Arch `.pacnew`/`.pacsave`, private 설정·백업 보존,
+  비활성 unit과 정적 unit 검사를 포함한다. 실제 서비스 실행 성공을 뜻하지 않는다.
+- `actionlint v1.7.12`, Bash/Python 문법 검사와 독립 읽기 전용 구현 리뷰를 통과했다.
+- 공식 이미지 digest와 격리 `etcd --version` 출처는
+  [CI 준비 기록](../.github/README.md#일회성-vm-준비)에 있다.
+
+### 초기 MVP 검증 기록 (3.7.3)
+
+아래 기록은 당시 바이너리의 결과이며, 변경된 바이너리의 검증을 대신하지 않는다.
 
 - `go test -count=1 ./...`, `go test -race -count=1 ./...`, `go vet ./...`, 정적 Linux amd64 빌드 성공.
 - 최종 제품 통합 **18개 시나리오 전부 PASS**, 소유한 컨테이너/fixture 정리 성공.

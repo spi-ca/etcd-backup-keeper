@@ -10,6 +10,7 @@ import (
 
 	"etcd-backup-keeper/internal/apperr"
 	"etcd-backup-keeper/internal/config"
+	"etcd-backup-keeper/internal/etcdcompat"
 	"etcd-backup-keeper/internal/storage"
 )
 
@@ -57,7 +58,7 @@ func attempt(ctx context.Context, cfg config.Config, index int, pin uint64, root
 	if (snapshot.clusterID != 0 || snapshot.memberID != 0) && (snapshot.clusterID != p.clusterID || snapshot.memberID != p.memberID) {
 		return result, identityError()
 	}
-	if snapshot.storageVersion != "3.7.0" {
+	if !etcdcompat.Storage(snapshot.storageVersion) {
 		return result, apperr.New("storage_unsupported", "snapshot storage version is not supported; incomplete staging preserved")
 	}
 	if err = copySnapshot(ctx, snapshotFile, snapshot.body, deps); err != nil {

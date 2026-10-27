@@ -78,7 +78,7 @@ func recoveryHint(code string) string {
 	case "remote_unavailable", "remote_invalid":
 		return "Check endpoint reachability, server health and TLS/authentication provisioning before another attempt."
 	case "server_unsupported":
-		return "Check server compatibility; only etcd 3.7 servers are supported."
+		return "Check server compatibility; only stable etcd 3.6.x and 3.7.x servers are supported."
 	case "cluster_mismatch":
 		return "Check the intended cluster and configured cluster pin; preserve existing backups and staging."
 	case "backup_incomplete":
@@ -289,7 +289,7 @@ Rows are confirmed, unverified or failed. Exit 0 means no observed failures,
 not readiness. Missing final storage root is unverified, not created. Locking,
 writability, fsync, no-replace publication, durability, snapshot permissions,
 previous backup cluster pins, integrity and restorability remain unverified.
---connect checks Status identity, etcd 3.7 and cluster coherence/configured pin,
+--connect checks Status identity, stable etcd 3.6.x/3.7.x and cluster coherence/configured pin,
 not snapshot authorization. Failures retain available rows in JSON data.
 ` + operationExitUsage
 	case "backup":

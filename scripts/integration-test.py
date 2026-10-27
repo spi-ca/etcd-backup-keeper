@@ -17,7 +17,7 @@ import tempfile
 import time
 import uuid
 
-IMAGE = "gcr.io/etcd-development/etcd:v3.7.3"
+DEFAULT_IMAGE = "gcr.io/etcd-development/etcd:v3.7.3"
 ETCD = "/usr/local/bin/etcd"
 CTL = "/usr/local/bin/etcdctl"
 UTL = "/usr/local/bin/etcdutl"
@@ -79,7 +79,7 @@ class Harness:
         self.wrong_password = secrets.token_urlsafe(32)
         self.sensitive.extend([self.password, self.wrong_password])
         self.record("Evidence format: scenario outcomes only; no raw subprocess output or secrets.")
-        self.record("Image: " + IMAGE)
+        self.record("Image: " + self.args.image)
         self.record("Mode: " + ("fixture-only (NOT product acceptance)" if args.fixture_only else "full"))
 
     def record(self, text):
@@ -140,7 +140,7 @@ class Harness:
         self.containers.append(name)  # Register before starting, including timeout paths.
         self.run(["podman", "run", "--detach", "--pull=never", "--network=none",
                   "--name", name, "--volume", str(self.root) + ":/work:z",
-                  "--entrypoint", ETCD, IMAGE, *args[1:]], label="start isolated etcd")
+                  "--entrypoint", ETCD, self.args.image, *args[1:]], label="start isolated etcd")
         self.ready(container=name, tls=tls, port=client)
 
     def ready(self, *, container=None, tls=False, port=None):
@@ -406,7 +406,7 @@ class Harness:
         self.containers.append(name)
         try:
             self.run(["podman", "run", "--detach", "--pull=never", "--network=none", "--name", name,
-                      "--volume", str(self.root) + ":/work:z", "--entrypoint", "/work/keeper", IMAGE,
+                      "--volume", str(self.root) + ":/work:z", "--entrypoint", "/work/keeper", self.args.image,
                       "backup", "--config", "/work/config.toml", "--json"], label="start cancellable CLI")
             lock = os.open(self.root / "backups" / ".lock", os.O_RDONLY | os.O_NOFOLLOW)
             try:
@@ -442,7 +442,7 @@ class Harness:
         name = "ebk-offline-check-" + uuid.uuid4().hex
         self.containers.append(name)
         result = self.run(["podman", "run", "--pull=never", "--network=none", "--name", name,
-                           "--volume", str(self.root) + ":/work:z", "--entrypoint", "/work/keeper", IMAGE,
+                           "--volume", str(self.root) + ":/work:z", "--entrypoint", "/work/keeper", self.args.image,
                            command, "--config", "/work/config.toml", "--json", *extra],
                           timeout=40, expected=None, label="offline product " + command)
         require((result.returncode == 0) == success, "offline command unexpected exit status")
@@ -490,7 +490,7 @@ class Harness:
         try:
             info = self.run(["podman", "info", "--format", "{{.Host.Security.Rootless}}"], label="rootless preflight")
             require(info.stdout.strip() == "true", "rootless Podman is required")
-            image = self.run(["podman", "image", "inspect", IMAGE, "--format", "{{.Id}}"], label="cached image preflight")
+            image = self.run(["podman", "image", "inspect", self.args.image, "--format", "{{.Id}}"], label="cached image preflight")
             self.image_id = image.stdout.strip()
             self.record("Cached image ID: " + self.image_id)
             self.fixtures()
@@ -518,7 +518,7 @@ class Harness:
                 "result": result,
                 "success": success and cleaned,
                 "cleanup_success": cleaned,
-                "image": IMAGE,
+                "image": self.args.image,
                 "image_id": self.image_id,
                 "binary_sha256": self.binary_sha256,
                 "scenarios": {name: self.results.get(name, "NOT RUN") for name in SCENARIOS},
@@ -534,6 +534,8 @@ class Harness:
 def main():
     os.umask(0o077)
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--image", default=DEFAULT_IMAGE,
+                        help="pre-cached etcd image for every scenario (default: %(default)s)")
     parser.add_argument("--binary", type=Path, help="explicit prebuilt STATIC Linux CLI path; never builds Go")
     parser.add_argument("--fixtures-only", "--fixture-only", dest="fixture_only", action="store_true",
                         help="validate official etcd fixtures only, NOT the product")

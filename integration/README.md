@@ -1,7 +1,7 @@
 # 격리 CLI 통합 테스트
 
 `scripts/integration-test.py`는 미리 빌드한 **정적 Linux 바이너리**와 공식 etcd
-v3.7.3을 연결하는 독립 실행 테스트다. Go 빌드, 모듈 변경, 패키지 설치,
+v3.6.8 또는 v3.7.3을 연결하는 독립 실행 테스트다. Go 빌드, 모듈 변경, 패키지 설치,
 운영 endpoint 접근을 하지 않는다. 제품의 런타임 의존성이 아니라 개발·CI 도구다.
 
 ## 준비 및 실행
@@ -15,7 +15,8 @@ user namespace/subuid/subgid 및 rootless 컨테이너 실행 환경은 미리 �
 단계이며, 스크립트 자체는 pull을 하지 않는다.
 
 ```sh
-podman pull gcr.io/etcd-development/etcd:v3.7.3
+podman pull --platform linux/amd64 gcr.io/etcd-development/etcd:v3.7.3
+podman pull --platform linux/amd64 gcr.io/etcd-development/etcd:v3.6.8
 podman info --format '{{.Host.Security.Rootless}}'  # true
 ```
 
@@ -31,6 +32,12 @@ python3 scripts/integration-test.py \
   --binary /absolute/path/to/static/etcd-backup-keeper \
   --evidence-dir /tmp/etcd-keeper-integration-final-unique
 ```
+
+`--image`의 기본값은 공식 `gcr.io/etcd-development/etcd:v3.7.3`이다.
+3.6.8 검증은 같은 명령에 `--image gcr.io/etcd-development/etcd:v3.6.8`을
+추가하고 **별도의 새 evidence 디렉터리**를 지정한다. 선택한 이미지가 모든 컨테이너와
+공식 도구에 동일하게 적용되며, 양쪽 모두 아래 **동일한 전체 18개 시나리오**를 실행한다.
+CI full lane은 두 버전을 각각 실행하고 버전별로 분리한 sanitized 파일만 수집한다.
 
 `--binary`는 호출자가 별도로 준비한 정적 ELF 실행 파일이어야 한다. 스크립트는
 ELF의 동적 인터프리터(PT_INTERP)가 있는 파일을 거부하고, private 임시 디렉터리에
@@ -115,7 +122,8 @@ RUN으로 명시한다**. 원격 스트림 실패/재시도와 기존 백업 보
 
 ## 검증 상태
 
-최종 제품 바이너리로 전체 18개 시나리오와 fixture 정리를 통과했다. 구체적인
+`v20261027-2` 제품 바이너리로 **3.6.8 / 3.7.3** 각각의 전체 18개 시나리오와
+fixture 정리를 통과했다. 두 실행 모두 동일한 바이너리를 사용했다. 구체적인
 구현·검증 매핑과 바이너리 해시는 [요구사항 기록](../docs/requirements.md)을 참고한다.
 이후 CI/개발 실행도 `integration.log`, `summary.json`, 종료 코드와 해당 바이너리의
 SHA-256을 연결해 판단한다. 과거 실행 성공이 변경된 바이너리의 성공을 대신하지 않는다.

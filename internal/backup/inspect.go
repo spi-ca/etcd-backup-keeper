@@ -17,6 +17,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"etcd-backup-keeper/internal/apperr"
+	"etcd-backup-keeper/internal/etcdcompat"
 )
 
 const inspectArgument = "--internal-inspect-snapshot-fd"
@@ -97,7 +98,7 @@ func Inspect(ctx context.Context, f *os.File) (Inspection, error) {
 		return Inspection{}, verificationError()
 	}
 	var extra any
-	if dec.Decode(&extra) != io.EOF || result.Revision < 0 || result.Keys < 0 || result.DBBytes <= 0 || result.StorageVersion != "3.7.0" {
+	if dec.Decode(&extra) != io.EOF || result.Revision < 0 || result.Keys < 0 || result.DBBytes <= 0 || !etcdcompat.Storage(result.StorageVersion) {
 		return Inspection{}, verificationError()
 	}
 	return result, nil

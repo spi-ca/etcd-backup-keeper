@@ -37,7 +37,7 @@ func TestRecoveryHintsHumanOnlyAndExitCodes(t *testing.T) {
 		{"space_insufficient", 1, "Check free bytes and inodes on the backup volume, including incomplete and pending-deletion items; preserve existing backups."},
 		{"remote_unavailable", 1, "Check endpoint reachability, server health and TLS/authentication provisioning before another attempt."},
 		{"remote_invalid", 1, "Check endpoint reachability, server health and TLS/authentication provisioning before another attempt."},
-		{"server_unsupported", 1, "Check server compatibility; only etcd 3.7 servers are supported."},
+		{"server_unsupported", 1, "Check server compatibility; only stable etcd 3.6.x and 3.7.x servers are supported."},
 		{"cluster_mismatch", 1, "Check the intended cluster and configured cluster pin; preserve existing backups and staging."},
 		{"backup_incomplete", 1, "Inspect status and backup-volume health; preserve incomplete staging for investigation."},
 		{"durability_uncertain", 1, "Investigate backup-volume sync failures; status cannot establish durability or snapshot integrity."},

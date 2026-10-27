@@ -82,6 +82,13 @@ podman pull --platform linux/amd64 "$etcd@$etcd_digest"
 podman tag "$etcd@$etcd_digest" "$etcd:v3.7.3"
 [[ $(podman image inspect "$etcd:v3.7.3" --format '{{.Os}}/{{.Architecture}}') == linux/amd64 ]] || \
     fail 'etcd image must be Linux amd64'
+# Official v3.6.8 linux/amd64 manifest, observed from RepoDigests after pulling
+# gcr.io/etcd-development/etcd:v3.6.8; isolated etcd --version reported 3.6.8.
+etcd36_digest=sha256:aa2b41e3f99c9a337b82f687875a63c5119e6d39bc43fc76b6c40a96f55cf391
+podman pull --platform linux/amd64 "$etcd@$etcd36_digest"
+podman tag "$etcd@$etcd36_digest" "$etcd:v3.6.8"
+[[ $(podman image inspect "$etcd:v3.6.8" --format '{{.Os}}/{{.Architecture}}') == linux/amd64 ]] || \
+    fail 'etcd 3.6.8 image must be Linux amd64'
 image=localhost/etcd-backup-keeper-test-ubuntu:24.04
 # Empty context: never send checkout contents or credentials into the image.
 context=$(mktemp -d "$RUNNER_TEMP/package-image.XXXXXXXX")
@@ -105,6 +112,7 @@ for tool in python3 openssl readelf; do command -v "$tool" >/dev/null || fail "m
 mkdir -p "$RUNNER_TEMP/ci-evidence"
 {
     printf 'etcd_image=%s@%s\n' "$etcd" "$etcd_digest"
+    printf 'etcd_3_6_image=%s@%s\n' "$etcd" "$etcd36_digest"
     printf 'package_image=%s\n' "$(podman image inspect "$image" --format '{{.Id}}')"
     printf 'arch_image=%s@%s\n' "$arch" "$arch_digest"
     printf 'arch_image_id=%s\n' "$(podman image inspect "$arch:base-devel" --format '{{.Id}}')"

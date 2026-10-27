@@ -9,6 +9,7 @@ import (
 
 	"etcd-backup-keeper/internal/apperr"
 	"etcd-backup-keeper/internal/config"
+	"etcd-backup-keeper/internal/etcdcompat"
 	"etcd-backup-keeper/internal/storage"
 )
 
@@ -153,8 +154,8 @@ func checkProbe(p probe, pin uint64) error {
 	if p.clusterID == 0 || p.memberID == 0 || (pin != 0 && pin != p.clusterID) {
 		return identityError()
 	}
-	if !supportedServer(p.serverVersion) {
-		return apperr.New("server_unsupported", "only etcd 3.7 servers are supported")
+	if !etcdcompat.Server(p.serverVersion) {
+		return apperr.New("server_unsupported", "only stable etcd 3.6.x and 3.7.x servers are supported")
 	}
 	if p.dbBytes <= 0 {
 		return apperr.New("remote_invalid", "candidate reported an invalid database size")

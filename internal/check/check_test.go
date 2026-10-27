@@ -180,17 +180,20 @@ func validStatus() status        { return status{header: true, clusterID: 1, mem
 
 func TestConnectStatusValidationAndCoherence(t *testing.T) {
 	valid := validStatus()
-	badHeader, zeroCluster, zeroMember, otherCluster, oldVersion := valid, valid, valid, valid, valid
+	badHeader, zeroCluster, zeroMember, otherCluster, oldVersion, version36 := valid, valid, valid, valid, valid, valid
 	badHeader.header = false
 	zeroCluster.clusterID = 0
 	zeroMember.memberID = 0
 	otherCluster.clusterID = 5
-	oldVersion.version = "3.6.9"
+	oldVersion.version = "3.5.9"
+	version36.version = "3.6.8"
 	for _, tc := range []struct {
 		name, pin, code string
 		infos           []status
 	}{
 		{"coherent", "0x1", "", []status{valid, valid}},
+		{"3.6.8", "0x1", "", []status{version36}},
+		{"rolling-upgrade", "0x1", "", []status{version36, valid}},
 		{"header", "", "remote_invalid", []status{badHeader}},
 		{"zero-cluster", "", "remote_invalid", []status{zeroCluster}},
 		{"zero-member", "", "remote_invalid", []status{zeroMember}},
@@ -309,5 +312,21 @@ func TestOfflineInvalidConfigStorageAndEndedContext(t *testing.T) {
 	})
 	if !errors.Is(err, context.Canceled) || rowFor(t, result, "candidate_status", 1).State != Unverified {
 		t.Fatalf("cancellation ignored: %+v %v", result, err)
+	}
+}
+
+func TestConnectRejectsUnsupportedVersions(t *testing.T) {
+	for _, version := range []string{"", "garbage", "3.5.9", "3.8.0", "4.0.0", "3.6.8-rc.1", "3.7.3+build"} {
+		t.Run(version, func(t *testing.T) {
+			info := validStatus()
+			info.version = version
+			result, err := run(context.Background(), testConfig(t), true, func(context.Context, context.Context, config.Config, int) (connection, error) {
+				return &fakeConnection{info: info}, nil
+			})
+			if err == nil || apperr.Safe(err).Code != "server_unsupported" || rowFor(t, result, "candidate_status", 1).State != Failed {
+				t.Fatalf("unsupported version accepted: %+v %v", result, err)
+			}
+			assertRedacted(t, result, err)
+		})
 	}
 }

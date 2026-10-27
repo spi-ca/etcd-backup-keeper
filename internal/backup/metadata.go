@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"etcd-backup-keeper/internal/apperr"
+	"etcd-backup-keeper/internal/etcdcompat"
 	"etcd-backup-keeper/internal/storage"
 )
 
@@ -89,7 +90,7 @@ func ParseMetadata(data []byte) (Metadata, error) {
 	if json.Unmarshal(data, &m) != nil {
 		return m, metadataError()
 	}
-	if m.FormatVersion != FormatVersion || !supportedServer(m.ServerVersion) || m.StorageVersion != "3.7.0" {
+	if m.FormatVersion != FormatVersion || !etcdcompat.Server(m.ServerVersion) || !etcdcompat.Storage(m.StorageVersion) {
 		return m, metadataError()
 	}
 	if m.ToolVersion == "" || len(m.ToolVersion) > 256 || strings.ContainsAny(m.ToolVersion, "\n\r\x00") {

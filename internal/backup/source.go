@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"os"
-	"regexp"
 	"time"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -104,9 +103,6 @@ func (c *etcdConnection) Snapshot(ctx context.Context) (stream, error) {
 	return result, nil
 }
 
-var serverVersion = regexp.MustCompile(`^3\.7\.[0-9]+$`)
-
-func supportedServer(version string) bool { return serverVersion.MatchString(version) }
 func identityError() error {
 	return apperr.New("cluster_mismatch", "candidate or snapshot identity does not match the cluster pin; no backup published and any incomplete staging is preserved")
 }
