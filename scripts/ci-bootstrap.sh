@@ -91,11 +91,23 @@ podman build --pull=always --tag "$image" --file "$repo/packaging/tests/ubuntu.D
 podman run --rm --pull=never --network=none --security-opt=no-new-privileges \
     --pids-limit=128 --memory=1g "$image" bash -ec \
     'command -v dpkg-deb; command -v systemctl; command -v systemd-analyze; command -v timeout'
+# Full release gates only call this bootstrap. The builders/tests themselves
+# never pull: prepare the official Arch base-devel tools here, pinned by digest.
+arch=docker.io/library/archlinux
+arch_digest=sha256:5b987b0196907ea97dd10e7b48e7d403c35c0389986da015aa86cf8d0b058084
+podman pull --platform linux/amd64 "$arch@$arch_digest"
+podman tag "$arch@$arch_digest" "$arch:base-devel"
+[[ $(podman image inspect "$arch:base-devel" --format '{{.Os}}/{{.Architecture}}') == linux/amd64 ]] || fail 'Arch image must be Linux amd64'
+podman run --rm --pull=never --network=none --security-opt=no-new-privileges \
+    --pids-limit=128 --memory=1g "$arch:base-devel" bash -ec \
+    'command -v makepkg; command -v fakeroot; command -v bsdtar; command -v zstd; command -v pacman; command -v systemctl; command -v systemd-analyze; pacman -Q systemd'
 for tool in python3 openssl readelf; do command -v "$tool" >/dev/null || fail "missing $tool"; done
 mkdir -p "$RUNNER_TEMP/ci-evidence"
 {
     printf 'etcd_image=%s@%s\n' "$etcd" "$etcd_digest"
     printf 'package_image=%s\n' "$(podman image inspect "$image" --format '{{.Id}}')"
+    printf 'arch_image=%s@%s\n' "$arch" "$arch_digest"
+    printf 'arch_image_id=%s\n' "$(podman image inspect "$arch:base-devel" --format '{{.Id}}')"
     podman --version
     python3 --version
     openssl version
