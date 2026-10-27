@@ -1,5 +1,9 @@
 # Ubuntu / Arch Linux 패키징
 
+이 문서는 **패키지 개발자용 빌드·payload 계약·격리 시험** 안내다. 릴리스 패키지를
+설치하는 운영자는 [빠른 시작](../docs/quickstart.md), 정기 운영·업그레이드·제거는
+[운영 안내](../docs/operations.md#5-systemd-스케줄러와-패키지-수명주기)를 따른다.
+
 대상은 **Ubuntu 24.04 amd64 (.deb)** 및 **Arch Linux x86_64 (.pkg.tar.zst)**다. 이 디렉터리는 Go 엔진과 독립적이다.
 빌더는 명시적으로 전달받은 정적 ELF 실행 파일을 복사할 뿐 Go 빌드, 다운로드,
 네트워크 접근, 호스트 패키지 설치, 서비스 실행을 하지 않는다. 패키지 검사는
@@ -9,7 +13,7 @@
 ## 입력과 패키지 빌드
 
 프로젝트 루트에서 다음처럼 실행한다. `--assets-dir`는 고정된 프로젝트 자료의
-루트다. 해당 디렉터리에서 **README, requirements·operations·restore-drill 문서,
+루트다. 해당 디렉터리에서 **README, quickstart·requirements·operations·troubleshooting·restore-drill 문서,
 integration/CI 안내, config.example.toml, LICENSE, THIRD_PARTY_NOTICES만** 읽는다. unit과 이 문서는 빌더가 속한 checkout의
 `packaging/`에서 읽는다. 변경 중인 checkout을 입력으로 사용하지 않는다.
 
@@ -138,43 +142,12 @@ root 소유권, 버전/의존성/backup 메타데이터와 script/hook·`/var` �
 
 ## 운영자가 명시적으로 활성화
 
-아래는 offline 패키지 시험에서 실행하지 않는 **운영 절차**다. 실제 CLI 및
-etcd 버전·TLS·권한·백업/복원 검증이 끝난 바이너리만 사용한다.
-
-1. 패키지를 설치하고 private 설정을 편집한다. 기본 loopback endpoint도 의도한
-   환경과 일치하는지 확인한다. 키·비밀번호는 패키지에 넣지 말고 별도로 배치한다.
-2. root 실행은 kubeadm의 root 전용 인증서 접근을 위한 기본값이다. 인증서의
-   소유권/권한과 private 백업 볼륨을 확인한다. 비밀을 CLI 인자로 전달하지 않는다.
-3. live systemd 노드에서 운영자가 직접 수행한다:
-
-   ```sh
-   sudo systemctl daemon-reload
-   # 승인된 환경에서 필요 시 수동 backup/verify 및 복원 훈련을 먼저 수행한다.
-   sudo systemctl enable --now etcd-backup-keeper.timer
-   systemctl list-timers etcd-backup-keeper.timer
-   journalctl -u etcd-backup-keeper.service
-   ```
-
-`OnCalendar=daily`와 최대 15분의 무작위 지연을 사용한다. `Persistent=true`이므로
-운영자가 timer를 시작하면 누락된 실행이 곧 수행될 수 있다. upgrade 뒤에도 운영자가
-`daemon-reload`를 수행한다. 이미 실행 중인/활성화된 unit은 업그레이드가 중지하거나
-재시작하지 않는다. remove/purge **전에** 운영자가 timer를 disable/stop하고 service의
-완료를 기다리거나 명시적으로 stop해야 한다. 자동 중지를 위한 maintscript도 없다.
-
-```sh
-sudo systemctl disable --now etcd-backup-keeper.timer
-sudo systemctl stop etcd-backup-keeper.service
-# 이후 dpkg remove/purge 또는 pacman -R; 완료 후 운영자가 systemctl daemon-reload
-```
-
-service는 `UMask=0077`, `StateDirectoryMode=0700`, `ProtectSystem=strict`,
-`ProtectHome=true`, 빈 capability set 등을 사용한다. systemd가 **실행 시** 기본
-state 디렉터리를 만들며 패키지 설치가 생성하지 않는다. Go 네트워크 및 동일
-실행 파일의 검사 helper를 막는 syscall/exec 제한은 넣지 않았다. 다만 실제
-실행/sandbox 호환성은 live systemd 검증이 필요하다. `/home` 아래 자료는 숨겨진다.
-다른 `backup_dir`을 쓰면 적절한 소유권/0700 권한으로 준비하고 unit drop-in의
-`ReadWritePaths=`도 갱신한다. 기본 쓰기 허용 경로는 `/var/lib/etcd-backup-keeper`다.
-`TimeoutStartSec=45min`이며 설정의 작업 timeout을 늘리면 unit도 함께 검토한다.
+패키지의 설치·업그레이드는 unit을 자동 활성화·시작하거나 백업을 실행하지 않는다.
+수동 백업·검증·격리 복원과 실제 대상 호스트의 수용 확인 후 운영자가 활성화한다.
+`Persistent=true`의 누락 실행 경고와 활성화 명령은 [빠른 시작](../docs/quickstart.md#5-복원-훈련수용-확인-후-timer-활성화),
+stop·완료 대기·설정/백업 보존·hardening·timeout·쓰기 경로 변경은
+[운영 수명주기 기준](../docs/operations.md#5-systemd-스케줄러와-패키지-수명주기)을 따른다.
+아래 offline 시험은 그 운영 수용 검증을 대신하지 않는다.
 
 ## 격리된 수명주기 시험
 

@@ -1,7 +1,25 @@
 # 요구사항과 검증 매핑
 
-현재 사용법은 [README](../README.md), 설정·실패 대응은 [운영 안내](operations.md)가
-기준이다. 이 문서는 초기 범위가 구현과 검사에서 누락되지 않았는지 추적한다.
+운영자는 [빠른 시작](quickstart.md), 계약은 [운영 안내](operations.md), 오류 조사는
+[문제 해결](troubleshooting.md)을 따른다. 이 문서는 **개발자용 소스 빌드·설계 근거와
+검증 이력**이며 초기 범위가 구현과 검사에서 누락되지 않았는지 추적한다.
+
+## 소스 빌드
+
+소스 checkout의 Linux 환경과 최소 Go **1.26**이 필요하다. 의존성 준비에 네트워크가
+필요할 수 있다. 다음 개발 빌드는 릴리스 버전을 주입하지 않으며 패키지 설치나
+운영 백업을 실행하지 않는다.
+
+```sh
+mkdir -p bin
+CGO_ENABLED=0 go build -trimpath -o bin/etcd-backup-keeper ./cmd/etcd-backup-keeper
+bin/etcd-backup-keeper version
+bin/etcd-backup-keeper --help
+```
+
+[통합 테스트](../integration/README.md), [패키지 빌드·시험](../packaging/README.md),
+[CI 범위](../.github/README.md)는 각각 별도 개발 절차다. 실행하지 않은 검증을 빌드
+성공으로 대신하지 않는다.
 
 ## 확정 범위
 
@@ -36,7 +54,7 @@
 | DEB | 바이너리·conffile·oneshot/timer·문서·라이선스 | `scripts/package-build.sh`, `packaging/systemd/*`, `packaging/tests/lifecycle.sh` |
 | LIFE | 설치/업그레이드 자동 시작 금지, 설정/백업 보존 | 격리 Ubuntu의 실제 dpkg install→설정 수정→upgrade→remove→purge, static unit 검사 및 재현 빌드 |
 | CI | 최소/최신 Go, 전체 통합·패키지 검증, 제한된 artifact | `.github/workflows/ci.yml`, `scripts/ci-bootstrap.sh`; action SHA 고정, actionlint 검사; hosted 결과는 Actions에서 확인 |
-| DOC | 운영·복원·설치·한계 문서 | README, operations, restore-drill, packaging/integration/CI 안내; 문서 링크 및 패키지 문서 사본 검사 |
+| DOC | 운영·복원·설치·한계 문서 | README, quickstart, operations, troubleshooting, restore-drill, packaging/integration/CI 안내; 문서 링크 및 패키지 문서 사본 검사 |
 
 ## 실행된 로컬 검사
 
