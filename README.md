@@ -63,7 +63,7 @@ Arch Linux x86_64**이며 다른 OS·CPU 지원을 뜻하지 않습니다.
 
 개발자는 [요구사항·소스 빌드·검증 기록](docs/requirements.md),
 [패키지 빌드·수명주기 시험](packaging/README.md),
-[격리 통합 테스트](integration/README.md), [CI 범위](.github/README.md)를 참고하세요.
+[격리 통합 테스트](integration/README.md), [CI 정의](https://github.com/spi-ca/etcd-backup-keeper/blob/main/.github/workflows/ci.yml)를 참고하세요.
 과거 [사용성 개선 계획](https://github.com/spi-ca/etcd-backup-keeper/blob/main/docs/usability-plan.md)은
 이력 자료이며 현재 사용법이 아닙니다.
 [소스 저장소](https://github.com/spi-ca/etcd-backup-keeper) ·
