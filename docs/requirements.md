@@ -18,7 +18,7 @@ bin/etcd-backup-keeper --help
 ```
 
 [통합 테스트](../integration/README.md), [패키지 빌드·시험](../packaging/README.md),
-[CI 범위](../.github/README.md)는 각각 별도 개발 절차다. 실행하지 않은 검증을 빌드
+[CI 정의](https://github.com/spi-ca/etcd-backup-keeper/blob/main/.github/workflows/ci.yml)는 각각 별도 개발 절차다. 실행하지 않은 검증을 빌드
 성공으로 대신하지 않는다.
 
 ## 확정 범위
@@ -71,8 +71,8 @@ bin/etcd-backup-keeper --help
   제거를 확인했다. Debian purge, Arch `.pacnew`/`.pacsave`, private 설정·백업 보존,
   비활성 unit과 정적 unit 검사를 포함한다. 실제 서비스 실행 성공을 뜻하지 않는다.
 - `actionlint v1.7.12`, Bash/Python 문법 검사와 독립 읽기 전용 구현 리뷰를 통과했다.
-- 공식 이미지 digest와 격리 `etcd --version` 출처는
-  [CI 준비 기록](../.github/README.md#일회성-vm-준비)에 있다.
+- 공식 이미지 digest와 격리 도구 준비 절차는
+  [CI 준비 스크립트](https://github.com/spi-ca/etcd-backup-keeper/blob/main/scripts/ci-bootstrap.sh)에 있다.
 
 ### 초기 MVP 검증 기록 (3.7.3)
 

@@ -52,8 +52,8 @@ cleanup() {
 trap cleanup EXIT
 # Copy only explicit stable assets, never mount a source checkout into the test.
 for tree in original-assets upgrade-assets; do
-    install -d -m 0700 "$evidence/$tree/docs" "$evidence/$tree/integration" "$evidence/$tree/.github"
-    for relative in README.md docs/quickstart.md docs/requirements.md docs/operations.md docs/troubleshooting.md docs/restore-drill.md integration/README.md .github/README.md config.example.toml LICENSE THIRD_PARTY_NOTICES; do
+    install -d -m 0700 "$evidence/$tree/docs" "$evidence/$tree/integration"
+    for relative in README.md docs/quickstart.md docs/requirements.md docs/operations.md docs/troubleshooting.md docs/restore-drill.md integration/README.md config.example.toml LICENSE THIRD_PARTY_NOTICES; do
         [[ -f $assets/$relative && ! -L $assets/$relative ]] || die "missing/nonregular/symlink asset: $relative"
         [[ $(realpath -e -- "$assets/$relative") == "$assets/"* ]] || die "asset escapes source: $relative"
         install -m 0600 "$assets/$relative" "$evidence/$tree/$relative"

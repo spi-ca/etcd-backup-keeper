@@ -43,7 +43,7 @@ assert_installed() {
     assert_mode "$service" 644
     assert_mode "$timer" 644
     [[ $(sha256sum /usr/bin/$package | cut -d ' ' -f 1) == "$binary_hash" ]] || fail 'installed binary differs'
-    for relative in README.md docs/quickstart.md docs/requirements.md docs/operations.md docs/troubleshooting.md docs/restore-drill.md integration/README.md .github/README.md config.example.toml LICENSE THIRD_PARTY_NOTICES; do
+    for relative in README.md docs/quickstart.md docs/requirements.md docs/operations.md docs/troubleshooting.md docs/restore-drill.md integration/README.md config.example.toml LICENSE THIRD_PARTY_NOTICES; do
         cmp "/usr/share/doc/$package/$relative" "/evidence/$1/$relative"
         assert_mode "/usr/share/doc/$package/$relative" 644
     done
@@ -76,8 +76,6 @@ usr/lib/systemd/system/$package.timer
 usr/share
 usr/share/doc
 usr/share/doc/$package
-usr/share/doc/$package/.github
-usr/share/doc/$package/.github/README.md
 usr/share/doc/$package/LICENSE
 usr/share/doc/$package/README.md
 usr/share/doc/$package/THIRD_PARTY_NOTICES
